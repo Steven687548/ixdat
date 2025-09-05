@@ -72,10 +72,11 @@ class OceanViewTimeSeriesReader:
         if start_idx is None:
             raise ValueError("No spectral data section found!")
 
+        # Validate/Locate wavelength 
         wl_line = lines[start_idx + 1].strip()
-        wavelengths = np.array(
-            [float(re.sub(",", ".", w)) for w in wl_line.split() if w]
-        )
+        wavelengths = self._parse_float_row(wl_line)
+        if wavelengths.size == 0:
+            raise ValueError("OceanView: wavelength line is empty or malformed")
 
         data_lines = [ln for ln in lines[start_idx + 2 :] if ln.strip()]
 
@@ -121,6 +122,11 @@ class OceanViewTimeSeriesReader:
         return uvvis_series
 
     # -------- Helpers --------
+    @staticmethod
+    def _parse_float_row(s):
+        parts = re.split(r"[\s\t]+", s.strip())
+        return np.array([float(p.replace(",", ".")) for p in parts if p], dtype=float)
+
     @staticmethod
     def _parse_header_date(date_str: str) -> datetime:
         """Parse OceanView-style header dates like
