@@ -87,12 +87,10 @@ class OceanViewTimeSeriesReader:
         # ---- Parse spectra and relative times ----
         spectra = []
         rel_times = []
-        for j, ln in enumerate(data_lines):
-            try:
-                stamp_str, vals = ln.split("\t", 1)
-            except ValueError:
-                parts = ln.split()
-                stamp_str, vals = parts[0], " ".join(parts[1:])
+        for ln in data_lines:
+
+            # Robust handling of seperators
+            stamp_str, vals = self._split_stamp(ln)
 
             rel_sec = self._parse_row_time(stamp_str)
             rel_times.append(rel_sec)
@@ -208,6 +206,18 @@ class OceanViewTimeSeriesReader:
             tz = timezone(timedelta(hours=tz_offset_hours))
 
         return dt.replace(tzinfo=tz)
+
+    def _split_stamp(self, line):
+        """Split a data line into (timestamp, rest). Prefer tab if present; else first whitespace run."""
+        if "\t" in line:
+            stamp, rest = line.split("\t", 1)
+        else:
+            parts = self._re_ws.split(line.strip(), maxsplit=1)
+            if not parts:
+                raise ValueError("empty line")
+            stamp = parts[0]
+            rest = parts[1] if len(parts) > 1 else ""
+        return stamp.strip(), rest.strip()
 
     @staticmethod
     def _parse_filename_time(path):
