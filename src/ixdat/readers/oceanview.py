@@ -9,7 +9,23 @@ from ..spectra import SpectrumSeries
 from ..techniques.spectroelectrochemistry import OpticalSpectrumSeries
 
 class OceanViewTimeSeriesReader:
-    """Reader for Ocean Insight/OceanView 'Data from ...txt Node' exports"""
+    """Reader for Ocean Insight/OceanView 'Data from ...txt Node' exports.
+
+    Produces an OpticalSpectrumSeries with axes = (time, wavelength).
+
+    Parameters (via read):
+        path_to_file: str | Path
+        name: optional name, defaults to stem
+        cls: target SpectrumSeries subclass (defaults to OpticalSpectrumSeries)
+        suffix: (unused; kept for compatibility)
+        anchor: "header" (default) | "mtime"
+            - Which absolute timestamp to use if both exist.
+        assume_tz: e.g., "UTC" (default). Only used if header lacks a TZ;
+            we anchor the parsed naive datetime to this zone instead of UTC.
+        filename_ms: bool (default True)
+            - If True, extract milliseconds from pattern '__HH-MM-SS-mmm' and
+              inject into the header time (if available).
+    """
 
     def read(
         self,
@@ -39,7 +55,13 @@ class OceanViewTimeSeriesReader:
         ms = self._parse_filename_time(path_to_file)       # int 毫秒
         if ms is not None and dt_header is not None:
             dt_header = dt_header.replace(microsecond=ms*1000)
-        tstamp_first = dt_header.timestamp()  
+
+        # Timestamp with fallback
+        if dt_header is None:
+            from datetime import timezone
+            dt_header = datetime.utcfromtimestamp(Path(path_to_file).stat().st_mtime).replace(tzinfo=timezone.utc)
+        tstamp_first = dt_header.timestamp()
+
         # ---- Find Begin Spectral Data ----
         start_idx = None
         for i, ln in enumerate(lines):
