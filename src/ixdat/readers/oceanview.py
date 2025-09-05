@@ -60,8 +60,9 @@ class OceanViewTimeSeriesReader:
         if dt_header is None:
             from datetime import timezone
 
-            dt_header = datetime.utcfromtimestamp(
-                Path(path_to_file).stat().st_mtime
+            dt_header = datetime.fromtimestamp(
+                Path(path_to_file).stat().st_mtime,
+                timezone.utc,
             ).replace(tzinfo=timezone.utc)
         tstamp_first = dt_header.timestamp()
 
