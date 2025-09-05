@@ -65,9 +65,10 @@ class OceanViewTimeSeriesReader:
         # ---- Find Begin Spectral Data ----
         start_idx = None
         for i, ln in enumerate(lines):
-            if "Begin Spectral Data" in ln:
-                start_idx = i
-                break
+            if re.search(r"begin\s+spectral\s+data", ln, flags=re.I):
+                if re.match(r"^\s*\d", lines[i+1]):# next line starts with a number
+                    start_idx = i
+                    break
         if start_idx is None:
             raise ValueError("No spectral data section found!")
 
