@@ -1,4 +1,3 @@
-
 from pathlib import Path
 import numpy as np
 import re
@@ -7,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from ..data_series import DataSeries, TimeSeries, Field
 from ..spectra import SpectrumSeries
 from ..techniques.spectroelectrochemistry import OpticalSpectrumSeries
+
 
 class OceanViewTimeSeriesReader:
     """Reader for Ocean Insight/OceanView 'Data from ...txt Node' exports.
@@ -44,35 +44,38 @@ class OceanViewTimeSeriesReader:
             lines = f.readlines()
 
         # ---- Parse header for Date ----
-        dt_header  = None
+        dt_header = None
         for ln in lines[:40]:  # only scan the top of the file
             if ln.lower().startswith("date:"):
                 date_str = ln.split(":", 1)[1].strip()
-                dt_header  = self._parse_header_date(date_str)
+                dt_header = self._parse_header_date(date_str)
                 break
 
         # ---- Refine with filename milliseconds if available ----
-        ms = self._parse_filename_time(path_to_file)       # int 毫秒
+        ms = self._parse_filename_time(path_to_file)  # int 毫秒
         if ms is not None and dt_header is not None:
-            dt_header = dt_header.replace(microsecond=ms*1000)
+            dt_header = dt_header.replace(microsecond=ms * 1000)
 
         # Timestamp with fallback
         if dt_header is None:
             from datetime import timezone
-            dt_header = datetime.utcfromtimestamp(Path(path_to_file).stat().st_mtime).replace(tzinfo=timezone.utc)
+
+            dt_header = datetime.utcfromtimestamp(
+                Path(path_to_file).stat().st_mtime
+            ).replace(tzinfo=timezone.utc)
         tstamp_first = dt_header.timestamp()
 
         # ---- Find Begin Spectral Data ----
         start_idx = None
         for i, ln in enumerate(lines):
             if re.search(r"begin\s+spectral\s+data", ln, flags=re.I):
-                if re.match(r"^\s*\d", lines[i+1]):# next line starts with a number
+                if re.match(r"^\s*\d", lines[i + 1]):  # next line starts with a number
                     start_idx = i
                     break
         if start_idx is None:
             raise ValueError("No spectral data section found!")
 
-        # Validate/Locate wavelength 
+        # Validate/Locate wavelength
         wl_line = lines[start_idx + 1].strip()
         wavelengths = self._parse_float_row(wl_line)
         if wavelengths.size == 0:
@@ -140,14 +143,22 @@ class OceanViewTimeSeriesReader:
 
         # Known TZ offsets (hours). Extend if needed.
         tz_offsets = {
-            "UTC": 0, "GMT": 0,
-            "CET": 1, "CEST": 2,
-            "WET": 0, "WEST": 1,
-            "EET": 2, "EEST": 3,
-            "PST": -8, "PDT": -7,
-            "MST": -7, "MDT": -6,
-            "CST": -6, "CDT": -5,
-            "EST": -5, "EDT": -4,
+            "UTC": 0,
+            "GMT": 0,
+            "CET": 1,
+            "CEST": 2,
+            "WET": 0,
+            "WEST": 1,
+            "EET": 2,
+            "EEST": 3,
+            "PST": -8,
+            "PDT": -7,
+            "MST": -7,
+            "MDT": -6,
+            "CST": -6,
+            "CDT": -5,
+            "EST": -5,
+            "EDT": -4,
             "BST": 1,
             "IST": 5.5,
         }
@@ -195,7 +206,7 @@ class OceanViewTimeSeriesReader:
         else:
             tz = timezone(timedelta(hours=tz_offset_hours))
 
-        return dt.replace(tzinfo=tz) 
+        return dt.replace(tzinfo=tz)
 
     @staticmethod
     def _parse_filename_time(path):
@@ -220,7 +231,7 @@ class OceanViewTimeSeriesReader:
         for fmt in fmts:
             try:
                 dt = datetime.strptime(stamp, fmt)
-                return dt.hour * 3600 + dt.minute * 60 + dt.second + dt.microsecond/1e6
+                return dt.hour * 3600 + dt.minute * 60 + dt.second + dt.microsecond / 1e6
             except ValueError:
                 continue
         try:
