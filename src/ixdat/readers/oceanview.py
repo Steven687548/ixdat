@@ -54,14 +54,6 @@ class OceanViewTimeSeriesReader:
         if ms is not None and dt_header is not None:
             dt_header = dt_header.replace(microsecond=ms * 1000)
 
-        # Timestamp with fallback
-        if dt_header is None:
-            from datetime import timezone
-
-            dt_header = datetime.fromtimestamp(
-                Path(path_to_file).stat().st_mtime,
-                timezone.utc,
-            ).replace(tzinfo=timezone.utc)
         tstamp_first = dt_header.timestamp()
 
         # ---- Find Begin Spectral Data ----
@@ -129,81 +121,28 @@ class OceanViewTimeSeriesReader:
 
     @staticmethod
     def _parse_header_date(date_str: str) -> datetime:
-        """Parse OceanView-style header dates like
-        'Mon Aug 18 15:23:28 CEST 2025' or 'Mon Aug 18 15:23:28 GMT+2 2025'
-        and return a timezone-aware datetime object.
-        """
+
         s = date_str.strip()
         if s.lower().startswith("date:"):
             s = s.split(":", 1)[1].strip()
         s = re.sub(r"\s+", " ", s)
 
-        # Known TZ offsets (hours). Extend if needed.
-        tz_offsets = {
-            "UTC": 0,
-            "GMT": 0,
-            "CET": 1,
-            "CEST": 2,
-            "WET": 0,
-            "WEST": 1,
-            "EET": 2,
-            "EEST": 3,
-            "PST": -8,
-            "PDT": -7,
-            "MST": -7,
-            "MDT": -6,
-            "CST": -6,
-            "CDT": -5,
-            "EST": -5,
-            "EDT": -4,
-            "BST": 1,
-            "IST": 5.5,
-        }
 
-        tz_offset_hours = None
+        s = re.sub(r"\b[A-Z]{2,5}\b(?=\s+\d{4}$)", "", s)
+        s = re.sub(r"\bGMT[+-]\d{1,2}(?::\d{2})?\b", "", s).strip()
 
-        # 1) GMT±H[:MM] style, e.g. 'GMT+2' or 'GMT-05:30'
-        m = re.search(r"\bGMT([+-])(\d{1,2})(?::(\d{2}))?\b", s)
-        if m:
-            sign = 1 if m.group(1) == "+" else -1
-            hours = int(m.group(2))
-            minutes = int(m.group(3) or 0)
-            tz_offset_hours = sign * (hours + minutes / 60.0)
-            # Remove the GMT token so strptime can match:
-            s = re.sub(r"\s*GMT[+-]\d{1,2}(?::\d{2})?\s*", " ", s).strip()
-
-        # 2) Abbrev before year, e.g. '... CEST 2025'
-        if tz_offset_hours is None:
-            m = re.search(r"\b([A-Z]{2,5})\b(?=\s+\d{4}$)", s)
-            if m and m.group(1) in tz_offsets:
-                tz_offset_hours = tz_offsets[m.group(1)]
-                s = s.replace(" " + m.group(1), "")
-
-        # Try a few likely layouts
         fmts = [
             "%a %b %d %H:%M:%S %Y",
             "%b %d %H:%M:%S %Y",
             "%a %b %d %H:%M:%S.%f %Y",
             "%b %d %H:%M:%S.%f %Y",
         ]
-        dt = None
         for fmt in fmts:
             try:
-                dt = datetime.strptime(s, fmt)
-                break
+                return datetime.strptime(s, fmt)  
             except ValueError:
-                pass
-
-        if dt is None:
-            raise ValueError(f"Could not parse header date: {date_str!r}")
-
-        # Apply timezone
-        if tz_offset_hours is None:
-            tz = timezone.utc
-        else:
-            tz = timezone(timedelta(hours=tz_offset_hours))
-
-        return dt.replace(tzinfo=tz)
+                continue
+        raise ValueError(f"Could not parse header date: {date_str!r}")
 
     def _split_stamp(self, line):
         """Split a data line into (timestamp, rest). Prefer tab if present; else first whitespace run."""
