@@ -17,7 +17,6 @@ class OceanViewTimeSeriesReader:
         path_to_file: str | Path
         name: optional name, defaults to stem
         cls: target SpectrumSeries subclass (defaults to OpticalSpectrumSeries)
-        suffix: (unused; kept for compatibility)
         anchor: "header" (default) | "mtime"
             - Which absolute timestamp to use if both exist.
         assume_tz: e.g., "UTC" (default). Only used if header lacks a TZ;
@@ -32,7 +31,6 @@ class OceanViewTimeSeriesReader:
         path_to_file,
         name=None,
         cls=OpticalSpectrumSeries,
-        suffix=".txt",
     ):
         path_to_file = Path(path_to_file)
         name = name or path_to_file.stem
@@ -212,7 +210,7 @@ class OceanViewTimeSeriesReader:
         if "\t" in line:
             stamp, rest = line.split("\t", 1)
         else:
-            parts = self._re_ws.split(line.strip(), maxsplit=1)
+            parts = re.split(r"[\s\t]", line.strip())
             if not parts:
                 raise ValueError("empty line")
             stamp = parts[0]
