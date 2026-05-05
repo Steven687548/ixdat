@@ -511,7 +511,7 @@ class StaircaseSEC:
             V_ref: voltage in volts
     
         """
-        if V_ref is not False:
+        if V_ref is not None:
             ref_spectra = self.SEC_dataFrame[self.around_V(V_ref)]
             for i in self.SEC_dataFrame.columns:
                 self.SEC_dataFrame[i] = self.SEC_dataFrame[i] - ref_spectra

@@ -41,6 +41,7 @@ from .opus_ftir import OpusFTIRReader
 
 # optical
 from .oceanview import OceanViewTimeSeriesReader
+from .andor import AndorKineticsCSVReader
 
 # Measruement.read() looks for readers here:
 
@@ -71,5 +72,7 @@ SPECTRUM_READER_CLASSES = {
     "xrdml": XRDMLReader,
     "qexafs": QexafsDATReader,
     "opus_ftir": OpusFTIRReader,
-    "oceanview":OceanViewTimeSeriesReader
+    "oceanview":OceanViewTimeSeriesReader,
+    "andor": AndorKineticsCSVReader,
+
 }

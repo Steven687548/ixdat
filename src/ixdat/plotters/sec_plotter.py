@@ -482,7 +482,7 @@ class StaircaseSECPlotter(MPLPlotter):
             smooth_param : smooth parameters in the form of [window length, polyorder]
 
         Returns:
-            the fig
+            the fig and ax
         """
 
         # return an fig of waterfall plot
@@ -504,7 +504,7 @@ class StaircaseSECPlotter(MPLPlotter):
         )
 
         for i in range(0, len(dataFrame.columns),reduce_factor):
-            if smooth_param != None:
+            if smooth_param is not None:
                 y_data = savgol_filter(
                     dataFrame[dataFrame.columns[i]], smooth_param[0], smooth_param[1]
                 )
@@ -516,10 +516,11 @@ class StaircaseSECPlotter(MPLPlotter):
         ax.set_ylabel("Absorption (m $\Delta$ O.D.)")
 
         if make_colorbar:
-            cbar = ax.figure.colorbar(sm, ax=ax)
-            cbar.set_label("U vs RHE (V)")
+            self.cbar = ax.figure.colorbar(sm, ax=ax)
+            self.cbar.set_label("U vs RHE (V)")
 
-        return fig,ax, cbar
+   
+        return fig,ax
     
 
 
@@ -557,7 +558,7 @@ class StaircaseSECPlotter(MPLPlotter):
             smooth_param (list) : smooth parameters in the form of [window length, polyorder]
 
         Returns:
-            the fig
+            the fig and ax
         """
         if dataFrame is None:
 
@@ -650,11 +651,10 @@ class StaircaseSECPlotter(MPLPlotter):
         else:
             ax.set_ylabel("Differential Absorption (m $\Delta$ O.D.)")
         if make_colorbar:
-            cbar = ax.figure.colorbar(sm, ax=ax)
-            cbar.set_label("U vs RHE (V)")
-            return fig,ax,cbar
-        else:
-            return fig,ax
+            self.cbar = ax.figure.colorbar(sm, ax=ax)
+            self.cbar.set_label("U vs RHE (V)")
+
+        return fig,ax
 
         
         
@@ -671,7 +671,7 @@ class StaircaseSECPlotter(MPLPlotter):
         normalize_method = "max",
         **kwargs
     ):
-        """single spectrum plot
+        """plot a single differential spectrum between two potentials (defined through the Arg:V_range)
 
         Args:
             fig : the matplotlib figure object
@@ -688,6 +688,10 @@ class StaircaseSECPlotter(MPLPlotter):
         dataFrame = self.data_config(
             dataFrame=dataFrame, WL_interval=WL_interval, V_interval=V_interval
         )
+        if fig is None:
+            fig = plt.figure()
+        if ax is None:
+            ax = fig.add_subplot(111)
         spectrum_to_plot = (
             dataFrame.loc[:, self.around_V(V_range[1])]
             - dataFrame.loc[:, self.around_V(V_range[0])]
@@ -745,7 +749,7 @@ class StaircaseSECPlotter(MPLPlotter):
             smooth_param (list) : smooth parameters in the form of [window length, polyorder]
 
         Returns:
-            the fig
+            the fig and ax
         """
         if dataFrame is None:
 
@@ -848,8 +852,7 @@ class StaircaseSECPlotter(MPLPlotter):
         else:
             ax.set_ylabel("Differential Absorption (m $\Delta$ O.D.)",fontsize = 12)
         if make_colorbar:
-            cbar = ax.figure.colorbar(sm, ax=ax)
-            cbar.set_label("U vs RHE (V)")
-            return fig,ax,cbar
-        else:
-            return fig,ax
+            self.cbar = ax.figure.colorbar(sm, ax=ax)
+            self.cbar.set_label("U vs RHE (V)")
+
+        return fig,ax
