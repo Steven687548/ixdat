@@ -1,6 +1,7 @@
 from pathlib import Path
 import pandas as pd
 from ..data_series import DataSeries, Field
+from ..tools import is_numeric
 
 # Characters that mark a line as a comment in common XRD text formats.
 _COMMENT_CHARS = ("#", "!", ";", "'")
@@ -24,7 +25,7 @@ def _parse_header_and_data(path_to_file):
                 if stripped:
                     header_lines.append(stripped.lstrip("".join(_COMMENT_CHARS)).strip())
                 n_header += 1
-            elif not header_lines and not _is_numeric(
+            elif not header_lines and not is_numeric(
                 stripped.replace(",", " ").split()[0]
             ):
                 # Bare column-label line before any data (e.g. "Q,I(Q)")
@@ -54,7 +55,7 @@ def _infer_axis_labels(header_lines):
 
     for line in header_lines:
         tokens = line.replace(",", " ").split()
-        if not tokens or all(_is_numeric(t) for t in tokens):
+        if not tokens or all(is_numeric(t) for t in tokens):
             continue
         lower = [t.lower() for t in tokens]
         first = lower[0]
@@ -73,7 +74,7 @@ def _infer_axis_labels(header_lines):
             x_unit = "degree"
 
         # Second token, if non-numeric, names the y axis
-        if len(tokens) >= 2 and not _is_numeric(tokens[1]):
+        if len(tokens) >= 2 and not is_numeric(tokens[1]):
             y_name = tokens[1]
 
     return x_name, x_unit, y_name, y_unit
@@ -88,14 +89,6 @@ def _guess_q_unit(token):
     if "nm" in token:
         return "1/nm"
     return "1/angstrom"
-
-
-def _is_numeric(s):
-    try:
-        float(s)
-        return True
-    except ValueError:
-        return False
 
 
 class XRDXYReader:

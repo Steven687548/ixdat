@@ -208,6 +208,15 @@ def get_default_cache_dir(appname, subdir=None):
     return path
 
 
+def is_numeric(s):
+    """Return True if string s can be parsed as a float."""
+    try:
+        float(s)
+        return True
+    except ValueError:
+        return False
+
+
 def thing_is_close(thing_one, thing_two):
     """Return whether two things are (nearly) equal, looking recursively if necessary"""
 
