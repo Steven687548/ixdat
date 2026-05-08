@@ -1,12 +1,3 @@
-"""Unit tests for the XRDXYReader and its header parser.
-
-Fixtures in test_data/xrd/ cover each comment character recognised by the
-reader (#, !, ;, '), a bare column-label line with no comment prefix, and a
-file with no header at all.  These are the cases that require the pre-scan in
-_parse_header_and_data -- pd.read_csv alone cannot handle them because it only
-accepts a single comment character and would misread bare label lines as data.
-"""
-
 from pathlib import Path
 
 import numpy as np
@@ -17,76 +8,167 @@ from ixdat.readers.xrd_xy import XRDXYReader, _parse_header_and_data
 DATA_DIR = Path(__file__).parent.parent.parent / "test_data" / "xrd"
 
 
-# ---------------------------------------------------------------------------
-# Parser-level tests (no ixdat backend needed)
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.parametrize(
     "filename, expected",
     [
         (
             "hash_comment_twotheta.xy",
-            dict(x_name="2theta", x_unit="degree", y_name="intensity", y_unit="counts", cols=2),
+            dict(
+                x_name="2theta",
+                x_unit="degree",
+                y_name="intensity",
+                y_unit="counts",
+                cols=2,
+            ),
         ),
         (
             "excl_comment_twotheta.xye",
-            dict(x_name="2theta", x_unit="degree", y_name="intensity", y_unit="counts", cols=3),
+            dict(
+                x_name="2theta",
+                x_unit="degree",
+                y_name="intensity",
+                y_unit="counts",
+                cols=3,
+            ),
         ),
         (
             "semicolon_comment_twotheta.xy",
-            dict(x_name="two theta", x_unit="degree", y_name="intensity", y_unit="counts", cols=2),
+            dict(
+                x_name="two theta",
+                x_unit="degree",
+                y_name="intensity",
+                y_unit="counts",
+                cols=2,
+            ),
         ),
         (
             "apos_comment_twotheta.xy",
-            dict(x_name="two theta", x_unit="degree", y_name="intensity", y_unit="counts", cols=2),
+            dict(
+                x_name="two theta",
+                x_unit="degree",
+                y_name="intensity",
+                y_unit="counts",
+                cols=2,
+            ),
         ),
         (
             "bare_label_q.xy",
-            dict(x_name="Q", x_unit="1/angstrom", y_name="I(Q)", y_unit="a.u.", cols=2, x_vals=[0.5, 1.0, 1.5]),
+            dict(
+                x_name="Q",
+                x_unit="1/angstrom",
+                y_name="I(Q)",
+                y_unit="a.u.",
+                cols=2,
+                x_vals=[0.5, 1.0, 1.5],
+            ),
         ),
         (
             "no_header.xye",
-            dict(x_name="two theta", x_unit="degree", y_name="intensity", y_unit="counts", cols=3),
+            dict(
+                x_name="two theta",
+                x_unit="degree",
+                y_name="intensity",
+                y_unit="counts",
+                cols=3,
+            ),
         ),
         (
             "multi_comment_twotheta.xy",
-            dict(x_name="2theta", x_unit="degree", y_name="intensity", y_unit="counts", cols=2),
+            dict(
+                x_name="2theta",
+                x_unit="degree",
+                y_name="intensity",
+                y_unit="counts",
+                cols=2,
+            ),
         ),
         (
             "comment_then_bare_label_q.xy",
-            dict(x_name="Q", x_unit="1/angstrom", y_name="I(Q)", y_unit="a.u.", cols=2, x_vals=[0.5, 1.0, 1.5]),
+            dict(
+                x_name="Q",
+                x_unit="1/angstrom",
+                y_name="I(Q)",
+                y_unit="a.u.",
+                cols=2,
+                x_vals=[0.5, 1.0, 1.5],
+            ),
         ),
         # Q-space unit variants
         (
             "q_nm_bare_label.xy",
-            dict(x_name="Q(nm^-1)", x_unit="1/nm", y_name="I(Q)", y_unit="a.u.", cols=2, x_vals=[0.5, 1.0, 1.5]),
+            dict(
+                x_name="Q(nm^-1)",
+                x_unit="1/nm",
+                y_name="I(Q)",
+                y_unit="a.u.",
+                cols=2,
+                x_vals=[0.5, 1.0, 1.5],
+            ),
         ),
         (
             "q_loose_fallback.xy",
-            dict(x_name="Q[1/A]", x_unit="1/angstrom", y_name="I(Q)", y_unit="a.u.", cols=2, x_vals=[0.5, 1.0, 1.5]),
+            dict(
+                x_name="Q[1/A]",
+                x_unit="1/angstrom",
+                y_name="I(Q)",
+                y_unit="a.u.",
+                cols=2,
+                x_vals=[0.5, 1.0, 1.5],
+            ),
         ),
         # Alternative 2-theta spellings
         (
             "twotheta_hyphen.xy",
-            dict(x_name="2-theta", x_unit="degree", y_name="intensity", y_unit="counts", cols=2),
+            dict(
+                x_name="2-theta",
+                x_unit="degree",
+                y_name="intensity",
+                y_unit="counts",
+                cols=2,
+            ),
         ),
         (
             "twotheta_2th.xy",
-            dict(x_name="2th", x_unit="degree", y_name="intensity", y_unit="counts", cols=2),
+            dict(
+                x_name="2th",
+                x_unit="degree",
+                y_name="intensity",
+                y_unit="counts",
+                cols=2,
+            ),
         ),
         (
             "angle_label.xy",
-            dict(x_name="angle", x_unit="degree", y_name="intensity", y_unit="counts", cols=2),
+            dict(
+                x_name="angle",
+                x_unit="degree",
+                y_name="intensity",
+                y_unit="counts",
+                cols=2,
+            ),
         ),
         # Structural header cases
         (
             "empty_lines_in_header.xy",
-            dict(x_name="Q", x_unit="1/angstrom", y_name="I(Q)", y_unit="a.u.", cols=2, x_vals=[0.5, 1.0, 1.5]),
+            dict(
+                x_name="Q",
+                x_unit="1/angstrom",
+                y_name="I(Q)",
+                y_unit="a.u.",
+                cols=2,
+                x_vals=[0.5, 1.0, 1.5],
+            ),
         ),
         (
             "comma_data.xy",
-            dict(x_name="Q", x_unit="1/angstrom", y_name="I(Q)", y_unit="a.u.", cols=2, x_vals=[0.5, 1.0, 1.5]),
+            dict(
+                x_name="Q",
+                x_unit="1/angstrom",
+                y_name="I(Q)",
+                y_unit="a.u.",
+                cols=2,
+                x_vals=[0.5, 1.0, 1.5],
+            ),
         ),
     ],
 )
@@ -99,11 +181,6 @@ def test_parse_header_and_data(filename, expected):
     assert y_unit == expected["y_unit"]
     assert data.shape == (3, expected["cols"])
     assert np.array_equal(data[:, 0], expected.get("x_vals", [10.0, 20.0, 30.0]))
-
-
-# ---------------------------------------------------------------------------
-# Reader-level tests (XRDSpectrum returned)
-# ---------------------------------------------------------------------------
 
 
 @pytest.fixture
