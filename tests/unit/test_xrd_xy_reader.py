@@ -57,6 +57,37 @@ DATA_DIR = Path(__file__).parent.parent.parent / "test_data" / "xrd"
             "comment_then_bare_label_q.xy",
             dict(x_name="Q", x_unit="1/angstrom", y_name="I(Q)", y_unit="a.u.", cols=2, x_vals=[0.5, 1.0, 1.5]),
         ),
+        # Q-space unit variants
+        (
+            "q_nm_bare_label.xy",
+            dict(x_name="Q(nm^-1)", x_unit="1/nm", y_name="I(Q)", y_unit="a.u.", cols=2, x_vals=[0.5, 1.0, 1.5]),
+        ),
+        (
+            "q_loose_fallback.xy",
+            dict(x_name="Q[1/A]", x_unit="1/angstrom", y_name="I(Q)", y_unit="a.u.", cols=2, x_vals=[0.5, 1.0, 1.5]),
+        ),
+        # Alternative 2-theta spellings
+        (
+            "twotheta_hyphen.xy",
+            dict(x_name="2-theta", x_unit="degree", y_name="intensity", y_unit="counts", cols=2),
+        ),
+        (
+            "twotheta_2th.xy",
+            dict(x_name="2th", x_unit="degree", y_name="intensity", y_unit="counts", cols=2),
+        ),
+        (
+            "angle_label.xy",
+            dict(x_name="angle", x_unit="degree", y_name="intensity", y_unit="counts", cols=2),
+        ),
+        # Structural header cases
+        (
+            "empty_lines_in_header.xy",
+            dict(x_name="Q", x_unit="1/angstrom", y_name="I(Q)", y_unit="a.u.", cols=2, x_vals=[0.5, 1.0, 1.5]),
+        ),
+        (
+            "comma_data.xy",
+            dict(x_name="Q", x_unit="1/angstrom", y_name="I(Q)", y_unit="a.u.", cols=2, x_vals=[0.5, 1.0, 1.5]),
+        ),
     ],
 )
 def test_parse_header_and_data(filename, expected):
