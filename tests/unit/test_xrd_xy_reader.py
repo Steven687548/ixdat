@@ -49,6 +49,14 @@ DATA_DIR = Path(__file__).parent.parent.parent / "test_data" / "xrd"
             "no_header.xye",
             dict(x_name="two theta", x_unit="degree", y_name="intensity", y_unit="counts", cols=3),
         ),
+        (
+            "multi_comment_twotheta.xy",
+            dict(x_name="2theta", x_unit="degree", y_name="intensity", y_unit="counts", cols=2),
+        ),
+        (
+            "comment_then_bare_label_q.xy",
+            dict(x_name="Q", x_unit="1/angstrom", y_name="I(Q)", y_unit="a.u.", cols=2, x_vals=[0.5, 1.0, 1.5]),
+        ),
     ],
 )
 def test_parse_header_and_data(filename, expected):
