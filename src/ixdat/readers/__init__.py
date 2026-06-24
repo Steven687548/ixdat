@@ -43,7 +43,7 @@ from .opus_ftir import OpusFTIRReader
 from .oceanview import OceanViewTimeSeriesReader
 from .andor import AndorKineticsCSVReader
 
-# Measruement.read() looks for readers here:
+# Measurement.read() looks for readers here:
 
 READER_CLASSES = {
     "ixdat": IxdatCSVReader,
@@ -72,7 +72,6 @@ SPECTRUM_READER_CLASSES = {
     "xrdml": XRDMLReader,
     "qexafs": QexafsDATReader,
     "opus_ftir": OpusFTIRReader,
-    "oceanview":OceanViewTimeSeriesReader,
+    "oceanview": OceanViewTimeSeriesReader,
     "andor": AndorKineticsCSVReader,
-
 }

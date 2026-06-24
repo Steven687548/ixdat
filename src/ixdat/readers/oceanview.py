@@ -48,7 +48,9 @@ class OceanViewTimeSeriesReader:
         if ms is not None and dt_header is not None:
             dt_header = dt_header.replace(microsecond=ms * 1000)
 
-        tstamp_first = dt_header.timestamp()
+        tstamp_first = (
+            dt_header.timestamp() if dt_header else path_to_file.stat().st_mtime
+        )
 
         # ---- Find Begin Spectral Data ----
         start_idx = None
@@ -73,15 +75,15 @@ class OceanViewTimeSeriesReader:
         rel_times = []
         for ln in data_lines:
 
-            # Robust handling of seperators
+            # Robust handling of separators
             stamp_str, vals = self._split_stamp(ln)
 
             rel_sec = self._parse_row_time(stamp_str)
             rel_times.append(rel_sec)
             vals = [float(v.replace(",", ".")) for v in vals.split()]
 
-            if len(vals)>=len(wavelengths):
-                spectra.append(vals[len(vals)-len(wavelengths):])
+            if len(vals) >= len(wavelengths):
+                spectra.append(vals[len(vals) - len(wavelengths) :])
             else:
                 spectra.append(vals)
 
@@ -119,14 +121,21 @@ class OceanViewTimeSeriesReader:
 
     @staticmethod
     def _parse_header_date(date_str: str) -> datetime:
-
         s = date_str.strip()
         if s.lower().startswith("date:"):
             s = s.split(":", 1)[1].strip()
         s = re.sub(r"\s+", " ", s)
 
-
-        s = re.sub(r"\b[A-Z]{2,5}\b(?=\s+\d{4}$)", "", s)
+        tzinfo = None
+        tz_match = re.search(r"\b([A-Z]{2,5})\b(?=\s+\d{4}$)", s)
+        if tz_match:
+            tzinfo = {
+                "UTC": timezone.utc,
+                "GMT": timezone.utc,
+                "CET": timezone(timedelta(hours=1)),
+                "CEST": timezone(timedelta(hours=2)),
+            }.get(tz_match.group(1))
+            s = s[: tz_match.start()] + s[tz_match.end() :]
         s = re.sub(r"\bGMT[+-]\d{1,2}(?::\d{2})?\b", "", s).strip()
 
         fmts = [
@@ -137,7 +146,8 @@ class OceanViewTimeSeriesReader:
         ]
         for fmt in fmts:
             try:
-                return datetime.strptime(s, fmt)  
+                dt = datetime.strptime(s, fmt)
+                return dt.replace(tzinfo=tzinfo or timezone.utc)
             except ValueError:
                 continue
         raise ValueError(f"Could not parse header date: {date_str!r}")
@@ -147,7 +157,7 @@ class OceanViewTimeSeriesReader:
         if "\t" in line:
             stamp, rest = line.split("\t", 1)
         else:
-            parts = re.split(r"[\s\t]", line.strip())
+            parts = re.split(r"\s+", line.strip(), maxsplit=1)
             if not parts:
                 raise ValueError("empty line")
             stamp = parts[0]
@@ -184,5 +194,3 @@ class OceanViewTimeSeriesReader:
             return float(stamp.replace(",", "."))
         except Exception:
             return np.nan
-
-

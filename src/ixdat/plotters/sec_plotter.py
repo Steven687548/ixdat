@@ -1,12 +1,13 @@
 """Plotters for spectroelectrochemistry. Makes use of those in spectrum_plotter.py"""
 
 import matplotlib as mpl
-from . import ECPlotter, SpectrumSeriesPlotter, SpectroMeasurementPlotter,MPLPlotter
+from . import ECPlotter, SpectrumSeriesPlotter, SpectroMeasurementPlotter, MPLPlotter
 from ..exceptions import SeriesNotFoundError
 from matplotlib import pyplot as plt
 import numpy as np
 import pandas as pd
 from scipy.signal import savgol_filter
+
 
 class SECPlotter(SpectroMeasurementPlotter):
     """A spectroelectrochemistry (SEC) matplotlib plotter."""
@@ -373,7 +374,7 @@ class ECOpticalPlotter(SECPlotter):
         measurement = measurement or self.measurement
         wavelengths = wavelengths or measurement.tracked_wavelengths
 
-        cmap = mpl.cm.get_cmap(cmap_name)
+        cmap = plt.get_cmap(cmap_name)
         norm = mpl.colors.Normalize(vmin=min(measurement.wl), vmax=max(measurement.wl))
 
         if not axes:
@@ -421,7 +422,7 @@ class ECOpticalPlotter(SECPlotter):
         measurement = measurement or self.measurement
         wavelengths = wavelengths or measurement.tracked_wavelengths
 
-        cmap = mpl.cm.get_cmap(cmap_name)
+        cmap = plt.get_cmap(cmap_name)
         norm = mpl.colors.Normalize(vmin=min(measurement.wl), vmax=max(measurement.wl))
 
         if not axes:
@@ -465,8 +466,8 @@ class StaircaseSECPlotter(MPLPlotter):
         WL_interval=None,
         V_interval=None,
         smooth_param=None,
-        reduce_factor = 1,
-        **kwargs
+        reduce_factor=1,
+        **kwargs,
     ):  # GUI
         """waterfall plot
 
@@ -503,28 +504,24 @@ class StaircaseSECPlotter(MPLPlotter):
             norm=plt.Normalize(vmin=dataFrame.columns[0], vmax=dataFrame.columns[-1]),
         )
 
-        for i in range(0, len(dataFrame.columns),reduce_factor):
+        for i in range(0, len(dataFrame.columns), reduce_factor):
             if smooth_param is not None:
                 y_data = savgol_filter(
                     dataFrame[dataFrame.columns[i]], smooth_param[0], smooth_param[1]
                 )
             else:
                 y_data = dataFrame[dataFrame.columns[i]]
-            ax.plot(dataFrame.index, y_data, c=cmap(i),**kwargs)
+            ax.plot(dataFrame.index, y_data, c=cmap(i), **kwargs)
 
         ax.set_xlabel("Wavelength (nm)")
-        ax.set_ylabel("Absorption (m $\Delta$ O.D.)")
+        ax.set_ylabel(r"Absorption (m $\Delta$ O.D.)")
 
         if make_colorbar:
             self.cbar = ax.figure.colorbar(sm, ax=ax)
             self.cbar.set_label("U vs RHE (V)")
 
-   
-        return fig,ax
-    
+        return fig, ax
 
-
-    
     def plot_differential(
         self,
         fig=None,
@@ -539,7 +536,7 @@ class StaircaseSECPlotter(MPLPlotter):
         WL_interval=None,
         V_interval=None,
         smooth_param=None,
-        capacitance_func = None
+        capacitance_func=None,
     ):
         """differential plot
 
@@ -637,9 +634,11 @@ class StaircaseSECPlotter(MPLPlotter):
                     spectrum_to_plot = spectrum_to_plot / np.abs(np.max(spectrum_to_plot))
                 elif normalize_method == "norm":
                     spectrum_to_plot = spectrum_to_plot / np.linalg.norm(spectrum_to_plot)
-                elif normalize_method == 'capacitance':
+                elif normalize_method == "capacitance":
                     if capacitance_func is not None:
-                        spectrum_to_plot = spectrum_to_plot/capacitance_func(dataFrame.columns[i])
+                        spectrum_to_plot = spectrum_to_plot / capacitance_func(
+                            dataFrame.columns[i]
+                        )
 
             ax.plot(spectrum_to_plot, c=cmap(i), linewidth=0.8, alpha=0.9)
 
@@ -649,15 +648,12 @@ class StaircaseSECPlotter(MPLPlotter):
         if normalize:
             ax.set_ylabel("Normalized\n Differential Absorption")
         else:
-            ax.set_ylabel("Differential Absorption (m $\Delta$ O.D.)")
+            ax.set_ylabel(r"Differential Absorption (m $\Delta$ O.D.)")
         if make_colorbar:
             self.cbar = ax.figure.colorbar(sm, ax=ax)
             self.cbar.set_label("U vs RHE (V)")
 
-        return fig,ax
-
-        
-        
+        return fig, ax
 
     def plot_spectrum(
         self,
@@ -668,8 +664,8 @@ class StaircaseSECPlotter(MPLPlotter):
         WL_interval=None,
         V_interval=None,
         smooth_param=None,
-        normalize_method = "max",
-        **kwargs
+        normalize_method="max",
+        **kwargs,
     ):
         """plot a single differential spectrum between two potentials (defined through the Arg:V_range)
 
@@ -708,12 +704,8 @@ class StaircaseSECPlotter(MPLPlotter):
             elif normalize_method == "norm":
                 spectrum_to_plot = spectrum_to_plot / np.linalg.norm(spectrum_to_plot)
 
-        ax.plot(spectrum_to_plot,**kwargs)
-
-
-
-
-
+        ax.plot(spectrum_to_plot, **kwargs)
+        return fig, ax
 
     def plot_stack_differential(
         self,
@@ -729,8 +721,8 @@ class StaircaseSECPlotter(MPLPlotter):
         WL_interval=None,
         V_interval=None,
         smooth_param=None,
-        capacitance_func = None,
-        spacing = 0.018,
+        capacitance_func=None,
+        spacing=0.018,
     ):
         """differential plot
 
@@ -776,7 +768,7 @@ class StaircaseSECPlotter(MPLPlotter):
             )
         )
 
-        cmap = plt.get_cmap(cmap_name, len(dataFrame.columns)+50)
+        cmap = plt.get_cmap(cmap_name, len(dataFrame.columns) + 50)
         # the indexes for the dataframe.columns are the first i in the following loop and the last one
         sm = plt.cm.ScalarMappable(
             cmap=cmap,
@@ -832,27 +824,38 @@ class StaircaseSECPlotter(MPLPlotter):
                 elif normalize_method == "zero_norm":
                     spectrum_to_plot = spectrum_to_plot - np.min(spectrum_to_plot)
                     spectrum_to_plot = spectrum_to_plot / np.linalg.norm(spectrum_to_plot)
-                    
-                elif normalize_method == 'capacitance':
+
+                elif normalize_method == "capacitance":
                     if capacitance_func is not None:
-                        spectrum_to_plot = spectrum_to_plot/capacitance_func(dataFrame.columns[i])
-            line_lable = str(round(dataFrame.columns[i - differential_interval],2))+"V - "+str(round(dataFrame.columns[i],2))+"V"
-            ax.plot(spectrum_to_plot+n*spacing, c=cmap(i), linewidth=1, alpha=1)
-            ax.annotate(text=line_lable,xy = [735,spectrum_to_plot.iloc[-1]+n*spacing+0.005],c=cmap(i),fontsize = 7)
-            
+                        spectrum_to_plot = spectrum_to_plot / capacitance_func(
+                            dataFrame.columns[i]
+                        )
+            line_label = (
+                str(round(dataFrame.columns[i - differential_interval], 2))
+                + "V - "
+                + str(round(dataFrame.columns[i], 2))
+                + "V"
+            )
+            ax.plot(spectrum_to_plot + n * spacing, c=cmap(i), linewidth=1, alpha=1)
+            ax.annotate(
+                text=line_label,
+                xy=[735, spectrum_to_plot.iloc[-1] + n * spacing + 0.005],
+                c=cmap(i),
+                fontsize=7,
+            )
 
             self.differential_dict[dataFrame.columns[i]] = original_spectrum
-            n+=1
-        
-        ax.set_xlabel("Wavelength (nm)",fontsize = 12)
+            n += 1
+
+        ax.set_xlabel("Wavelength (nm)", fontsize=12)
         ax.set_yticks([])
 
         if normalize:
-            ax.set_ylabel("Normalized\n Differential Absorption",fontsize = 12)
+            ax.set_ylabel("Normalized\n Differential Absorption", fontsize=12)
         else:
-            ax.set_ylabel("Differential Absorption (m $\Delta$ O.D.)",fontsize = 12)
+            ax.set_ylabel(r"Differential Absorption (m $\Delta$ O.D.)", fontsize=12)
         if make_colorbar:
             self.cbar = ax.figure.colorbar(sm, ax=ax)
             self.cbar.set_label("U vs RHE (V)")
 
-        return fig,ax
+        return fig, ax

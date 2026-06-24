@@ -5,11 +5,10 @@ from scipy.interpolate import interp1d
 
 from .ec import ECMeasurement
 from ..db import PlaceHolderObject
-from ..spectra import Spectrum, SpectroMeasurement,SpectrumSeries
+from ..spectra import Spectrum, SpectroMeasurement, SpectrumSeries
 from ..data_series import Field, ValueSeries
 from ..exporters import SECExporter
-from ..plotters import SECPlotter, ECOpticalPlotter,StaircaseSECPlotter
-
+from ..plotters import SECPlotter, ECOpticalPlotter, StaircaseSECPlotter
 
 
 class SpectroECMeasurement(SpectroMeasurement, ECMeasurement):
@@ -52,7 +51,9 @@ class ECXASMeasurement(SpectroECMeasurement):
 
 class OpticalSpectrumSeries(SpectrumSeries):
     """Optical Spectrum Series"""
+
     pass
+
 
 class ECOpticalMeasurement(SpectroECMeasurement):
     """Electrochemistry with optical Spectroscopy
@@ -105,13 +106,14 @@ class ECOpticalMeasurement(SpectroECMeasurement):
             V_ref (float): The potential to use as the reference spectrum. This will
                 only work if the potential is monotonically increasing.
         """
-        if t_ref and not spectrum:
+        if t_ref is not None and spectrum is None:
             spectrum = self.get_spectrum(t=t_ref)
-        if V_ref and not spectrum:
+        if V_ref is not None and spectrum is None:
             spectrum = self.get_spectrum(V=V_ref)
-        if not spectrum:
+        if spectrum is None:
             raise ValueError("must provide a spectrum, t_ref, or V_ref!")
         self._reference_spectrum = spectrum
+
     def set_reference_spectrum_through_t_range(
         self,
         spectrum=None,
@@ -130,13 +132,14 @@ class ECOpticalMeasurement(SpectroECMeasurement):
             V_ref (float): The potential to use as the reference spectrum. This will
                 only work if the potential is monotonically increasing.
         """
-        if t_range and not spectrum:
+        if t_range is not None and spectrum is None:
             spectrum = self.get_spectrum(t=t_range)
-        if V_ref and not spectrum:
+        if V_ref is not None and spectrum is None:
             spectrum = self.get_spectrum(V=V_ref)
-        if not spectrum:
+        if spectrum is None:
             raise ValueError("must provide a spectrum, t_ref, or V_ref!")
         self._reference_spectrum = spectrum
+
     @property
     def wavelength(self):
         """A DataSeries with the wavelengths for the SEC spectra"""
@@ -160,7 +163,7 @@ class ECOpticalMeasurement(SpectroECMeasurement):
         Return Field: the delta optical density spanning time and wavelength
         """
         counts = self.spectra.data
-        if V_ref or t_ref:
+        if V_ref is not None or t_ref is not None:
             ref_spec = self.get_spectrum(V=V_ref, t=t_ref, index=index_ref)
         else:
             ref_spec = self.reference_spectrum
@@ -190,16 +193,16 @@ class ECOpticalMeasurement(SpectroECMeasurement):
 
         Return Spectrum: The spectrum. The data is (spectrum.x, spectrum.y)
         """
-        if V and V in self.U:  # woohoo, can skip interpolation!
+        if V is not None and V in self.U:  # woohoo, can skip interpolation!
             index = int(np.argmax(self.U == V))
-        elif t and t in self.t:  # woohoo, can skip interpolation!
+        elif t is not None and t in self.t:  # woohoo, can skip interpolation!
             index = int(np.argmax(self.t == t))
-        if index:  # then we're done:
+        if index is not None:  # then we're done:
             return self.spectrum_series[index]
         # otherwise, we have to interpolate:
         counts = self.spectra.data
         end_spectra = (self.spectrum_series[0].y, self.spectrum_series[-1].y)
-        if V:
+        if V is not None:
             if interpolate:
                 counts_interpolater = interp1d(
                     self.U, counts, axis=0, fill_value=end_spectra, bounds_error=False
@@ -211,7 +214,7 @@ class ECOpticalMeasurement(SpectroECMeasurement):
                 index = np.argmin(U_diff)
                 y = counts[index]
             name = name or f"{self.spectra.name}_{V}V"
-        elif t:
+        elif t is not None:
             t_spec = self.spectra.axes_series[0].t
             if interpolate:
                 counts_interpolater = interp1d(
@@ -259,7 +262,7 @@ class ECOpticalMeasurement(SpectroECMeasurement):
         Return:
              Spectrum: The dOD spectrum. The data is (spectrum.x, spectrum.y)
         """
-        if V_ref or t_ref or index_ref:
+        if V_ref is not None or t_ref is not None or index_ref is not None:
             spectrum_ref = self.get_spectrum(V=V_ref, t=t_ref, index=index_ref)
         else:
             spectrum_ref = self.reference_spectrum
@@ -294,7 +297,7 @@ class ECOpticalMeasurement(SpectroECMeasurement):
             index_ref (int): The index of the reference spectrum
         Returns ValueSeries: The dOD value of the spectrum at wl.
         """
-        if V_ref or t_ref or index_ref:
+        if V_ref is not None or t_ref is not None or index_ref is not None:
             spectrum_ref = self.get_spectrum(V=V_ref, t=t_ref, index=index_ref)
         else:
             spectrum_ref = self.reference_spectrum
@@ -336,8 +339,8 @@ class StaircaseSEC:
         self,
         SEC_intensity_dataFrame,
         reverse=False,
-        ohmic_corrected = False,
-        auto_reverse_correction = True,
+        ohmic_corrected=False,
+        auto_reverse_correction=True,
         global_WL_interval=None,
         global_V_interval=None,
         global_smooth_param=None,
@@ -345,7 +348,7 @@ class StaircaseSEC:
     ):
         """
         Args:
-            SEC_intensity_dataFrame: a dataframe of the raw intensities 
+            SEC_intensity_dataFrame: a dataframe of the raw intensities
             reverse: whether its a cathodic scan (automatic detection is in use in the current version)
             global_WL_interval: wavelength interval
             global_V_interval: voltage interval
@@ -355,16 +358,16 @@ class StaircaseSEC:
 
         self.SEC_intensity_dataFrame = SEC_intensity_dataFrame.copy()
         # for reverse scan, simply reverse the order of columns, then the columns become ascending order, making reverse scan not different from forward scan
-        if self.SEC_intensity_dataFrame.columns[-1] < self.SEC_intensity_dataFrame.columns[0] and auto_reverse_correction:
+        if (
+            self.SEC_intensity_dataFrame.columns[-1]
+            < self.SEC_intensity_dataFrame.columns[0]
+            and auto_reverse_correction
+        ):
             reverse = True
         if reverse:
-            column_reverse = []
-            df_new = self.SEC_intensity_dataFrame.copy()
-            for i in range(len(self.SEC_intensity_dataFrame.columns)):
-                df_new.iloc[:, i] = self.SEC_intensity_dataFrame.iloc[:, -(i + 1)]
-                column_reverse.append(self.SEC_intensity_dataFrame.columns[-(i + 1)])
-            df_new.columns = column_reverse
-            self.SEC_intensity_dataFrame = df_new
+            self.SEC_intensity_dataFrame = self.SEC_intensity_dataFrame.iloc[
+                :, ::-1
+            ].copy()
 
         self.SEC_intensity_dataFrame.columns = (
             np.round(pd.to_numeric(self.SEC_intensity_dataFrame.columns), 3) + V_correction
@@ -372,13 +375,17 @@ class StaircaseSEC:
 
         self.SEC_raw = self.SEC_intensity_dataFrame.copy()
 
-        reference = self.SEC_intensity_dataFrame[self.SEC_intensity_dataFrame.columns[0]].copy()
+        reference = self.SEC_intensity_dataFrame[
+            self.SEC_intensity_dataFrame.columns[0]
+        ].copy()
 
         self.SEC_dataFrame = self.SEC_intensity_dataFrame.copy()
         self.ohmic_corrected = ohmic_corrected
 
         for i in self.SEC_dataFrame.columns:
-            self.SEC_dataFrame[i] = -np.log10(self.SEC_intensity_dataFrame[i] / reference)
+            ratio = self.SEC_intensity_dataFrame[i] / reference
+            ratio = ratio.where(ratio > 0)
+            self.SEC_dataFrame[i] = -np.log10(ratio)
         self.SEC_original = self.SEC_dataFrame.copy()
 
         # the SEC_dataFrame after initialization is the unsmoothed data with its first voltage as reference with no applied wl and v truncate
@@ -393,6 +400,7 @@ class StaircaseSEC:
                 polyorder=global_smooth_param[1],
             )
         self.init_plotter()
+
     def init_plotter(self):
         """
         initiate the plotter
@@ -402,9 +410,9 @@ class StaircaseSEC:
         self.plot_differential = self.plotter.plot_differential
         self.plot_spectrum = self.plotter.plot_spectrum
         self.plot_stack_differential = self.plotter.plot_stack_differential
-        
 
-    def smooth(self, input_dataframe, window_length=100, polyorder=1):
+    @staticmethod
+    def smooth(input_dataframe, window_length=100, polyorder=1):
         """smooth spectra
 
         Args:
@@ -420,7 +428,9 @@ class StaircaseSEC:
         for i in dataframe.columns:
             dataframe[i] = savgol_filter(dataframe[i], window_length, polyorder)
         return dataframe
-    def spectroLSV_smooth(self, input_dataframe, window_length=100, polyorder=1,loop_times = 1):
+
+    @staticmethod
+    def spectroLSV_smooth(input_dataframe, window_length=100, polyorder=1, loop_times=1):
         """smooth spetro LSV
 
         Args:
@@ -435,11 +445,14 @@ class StaircaseSEC:
         dataframe = input_dataframe.copy()
 
         for i in dataframe.index:
-            for j in range(loop_times):
-                dataframe.loc[i,:] = savgol_filter(dataframe.loc[i,:], window_length, polyorder)
+            for _ in range(loop_times):
+                dataframe.loc[i, :] = savgol_filter(
+                    dataframe.loc[i, :], window_length, polyorder
+                )
         return dataframe
 
-    def with_wavelength_interval(self, WL_interval, input_dataframe):
+    @staticmethod
+    def with_wavelength_interval(WL_interval, input_dataframe):
         """truncate the dataframe based a wavelength interval
 
         Args:
@@ -456,7 +469,8 @@ class StaircaseSEC:
         ]
         return dataframe
 
-    def with_voltage_interval(self, V_interval, input_dataframe):
+    @staticmethod
+    def with_voltage_interval(V_interval, input_dataframe):
         """truncate the dataframe based a voltage interval
 
         Args:

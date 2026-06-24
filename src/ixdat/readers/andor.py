@@ -1,12 +1,11 @@
 from pathlib import Path
 import numpy as np
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 
 from ..data_series import DataSeries, TimeSeries, Field
 from ..spectra import SpectrumSeries
 from ..techniques.spectroelectrochemistry import OpticalSpectrumSeries
-
 
 
 class AndorKineticsCSVReader:
@@ -64,7 +63,7 @@ class AndorKineticsCSVReader:
             if not self._row_starts_with_float(ln):
                 continue
 
-            parts = [float(x) for x in ln.strip().split(",") if x!='']
+            parts = [float(x) for x in ln.strip().split(",") if x != ""]
             data_block.append(parts)
 
         data_block = np.array(data_block)
@@ -76,7 +75,7 @@ class AndorKineticsCSVReader:
 
         # ---------------- CORRECT TIME AXIS ----------------
         # start_offset = AccumulateCycleTime * NumAccum
-        start_offset = accum_cycle * num_accum   # constant shift
+        start_offset = accum_cycle * num_accum  # constant shift
 
         # frame increment = Kinetic Cycle Time
         rel_times = start_offset + kinetic_cycle * np.arange(n_frames)
@@ -97,7 +96,7 @@ class AndorKineticsCSVReader:
         field = Field(
             name="intensity",
             unit_name="counts",
-            data=intens.T,     # (time, wavelength)
+            data=intens.T,  # (time, wavelength)
             axes_series=[tseries, xseries],
         )
 
@@ -153,7 +152,7 @@ class AndorKineticsCSVReader:
                 s = re.sub(
                     r"(^[A-Za-z]{3}\s+[A-Za-z]{3}\s+)(\d)(\s+)",
                     r"\g<1>0\2\3",
-                    s
+                    s,
                 )
 
                 fmts = [
