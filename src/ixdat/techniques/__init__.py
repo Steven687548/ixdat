@@ -19,8 +19,10 @@ from .spectroelectrochemistry import (
 )
 
 from .xrf import TRXRFMeasurement, ECTRXRFMeasurement
+from .xrd import XRDSpectrum
 from .reactor import ReactorMeasurement, ReactorSpectroMeasurement, ReactorCalibration
 from .ftir import FTIRSpectrum, ECFTIRMeasurement
+from .nmr import FIDSpectrum, NMRSpectrum, NMRSpectrumSeries
 from ..spectra import Spectrum
 from ..measurement_base import Measurement
 
@@ -47,4 +49,7 @@ TECHNIQUE_CLASSES = {
     "FTIR": FTIRSpectrum,
     "Optical": OpticalSpectrumSeries,
     "EC-FTIR": ECFTIRMeasurement,
+    "NMR": NMRSpectrum,
+    "NMR_spectra": NMRSpectrumSeries,
+    "FID": FIDSpectrum,
 }

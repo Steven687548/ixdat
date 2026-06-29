@@ -1,12 +1,23 @@
 """This module contains general purpose tools"""
 
+from __future__ import annotations
+
+import os
 import datetime
 import inspect
 import time
 import warnings
+import platform
+from pathlib import Path
 from functools import wraps
 from string import ascii_uppercase
-from typing import Optional
+from typing import Optional, Iterable, Mapping, Union, cast
+
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+import threading
+import queue
 
 import numpy as np
 from packaging import version
@@ -18,6 +29,192 @@ import ixdat.config
 from ixdat import __version__
 
 warnings.simplefilter("default")
+
+
+def request_with_retries(
+    session: requests.Session,
+    method: str,
+    url: str,
+    *,
+    connect_timeout: float = 3.0,  # TCP connect timeout (s)
+    read_timeout: float = 10.0,  # per-chunk read timeout (s)
+    total_timeout: Optional[float] = None,  # absolute wall-clock cap (s)
+    retries: int = 2,  # retries = retries+1
+    backoff_factor: float = 0.5,  # values found online
+    retry_statuses: Iterable[int] = (502, 503, 504),  # values found online
+    headers: Optional[Mapping[str, str]] = None,
+    params: Optional[Mapping[str, Union[str, int, float]]] = None,
+    stream: bool = False,
+) -> requests.Response:
+    """
+    Make an HTTP request with explicit connect/read timeouts,
+    a hard total deadline, and limited retries on tranfer errors.
+    Runs the request in a daemon worker thread
+    so Ctrl-C (KeyboardInterrupt) aborts immediately,
+    and timeout exception executes correctly.
+    """
+    # Retry automatically on temporary server errors (502/503/504 = server momentarily
+    # overloaded or restarting); each attempt waits a bit longer than the previous one.
+    adapter = HTTPAdapter(
+        max_retries=Retry(
+            total=retries,
+            connect=retries,
+            read=retries,
+            backoff_factor=backoff_factor,
+            status_forcelist=frozenset(retry_statuses),
+            allowed_methods=frozenset(["GET", "HEAD", "OPTIONS"]),
+            raise_on_status=False,
+            respect_retry_after_header=True,
+        )
+    )
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+
+    start = time.monotonic()
+
+    # Running the request in a background thread lets Ctrl-C interrupt it immediately
+    # and keeps the total-timeout check working; results and exceptions are passed back
+    # via a one-slot queue.
+    out: "queue.Queue[Union[requests.Response, BaseException]]" = queue.Queue(maxsize=1)
+
+    def _do_request():
+        try:
+            r = session.request(
+                method=method.upper(),
+                url=url,
+                headers=headers,
+                params=params,
+                stream=stream,
+                timeout=(connect_timeout, read_timeout),
+            )
+            r.raise_for_status()  # convert 4xx/5xx status codes into exceptions
+            out.put(r)
+        except BaseException as e:
+            # propagate any exception to main thread
+            out.put(e)
+
+    t = threading.Thread(target=_do_request, name="ixdat_http", daemon=True)
+    t.start()
+
+    try:
+        while True:
+            try:
+                item = out.get(timeout=0.2)  # short poll keeps Ctrl-C responsive
+                if isinstance(item, requests.Response):
+                    resp: requests.Response = item
+                    break
+                raise cast(BaseException, item)
+            except queue.Empty:
+                if (
+                    total_timeout is not None
+                    and (time.monotonic() - start) > total_timeout
+                ):
+                    raise requests.exceptions.Timeout("Total timeout exceeded")
+
+        # Edge case: response arrived just as the deadline passed
+        if total_timeout is not None and (time.monotonic() - start) > total_timeout:
+            raise requests.exceptions.Timeout("Total timeout exceeded")
+
+        return resp
+
+    except KeyboardInterrupt:
+        # Ctrl-C
+        raise
+
+    except requests.exceptions.Timeout as exc:
+        if "Total timeout" in str(exc):
+            msg = (
+                f"Request to {url} exceeded total time budget "
+                f"({total_timeout} s). Try increasing the total timeout "
+                "or check your internet connection."
+            )
+        else:
+            msg = (
+                f"Request to {url} timed out while connecting/reading "
+                f"(connect={connect_timeout}s, read={read_timeout}s). "
+                "Check connectivity or increase timeouts."
+            )
+        raise RuntimeError(msg) from exc
+
+    except requests.exceptions.HTTPError as exc:
+        # Server responded but reported an error: 4xx means the request was bad
+        # (e.g. 404 Not Found, 403 Forbidden), 5xx means the server itself failed.
+        # We try to pull a human-readable explanation out of the response body before
+        # re-raising, so the error message names the actual problem rather than just
+        # the numeric code.
+        response = exc.response
+        status = response.status_code if response is not None else None
+        reason = response.reason if response is not None else None
+        detail = None
+        if response is not None:
+            try:
+                payload = response.json()
+            except ValueError:
+                payload = None
+            if isinstance(payload, dict):
+                detail = payload.get("detail") or payload.get("message")
+            if detail is None:
+                detail = response.text.strip()[:500]
+
+        message = f"Failed to fetch {url}"
+        if status is not None:
+            message += f" (HTTP {status}"
+            if reason:
+                message += f" {reason}"
+            message += ")"
+        if detail:
+            message += f": {detail}"
+        raise RuntimeError(message) from exc
+
+    # network failure before the server ever replied
+    except requests.exceptions.RequestException as exc:
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+        suffix = f" (HTTP {status})" if status is not None else ""
+        raise RuntimeError(
+            f"Failed to fetch {url} after {retries} retries{suffix}. "
+            "Possible causes: no internet, DNS failure, or blocked TCP."
+        ) from exc
+
+    finally:
+        # unmount adapters
+        session.adapters.pop("http://", None)
+        session.adapters.pop("https://", None)
+
+
+def get_default_cache_dir(appname, subdir=None):
+    """
+    Return the platform-appropriate cache directory for a given application.
+
+    Args:
+        appname (str): Folder name for the app's cache
+        subdir (str or Path, optional): Optional subfolder (e.g. version)
+
+    Returns:
+        Path: Path to the appropriate user cache directory
+    """
+    system = platform.system()
+
+    if system == "Windows":
+        base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+    elif system == "Darwin":
+        base = Path.home() / "Library" / "Caches"
+    else:
+        base = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
+
+    path = base / appname
+    if subdir:
+        path = path / subdir
+
+    return path
+
+
+def is_numeric(s):
+    """Return True if string s can be parsed as a float."""
+    try:
+        float(s)
+        return True
+    except ValueError:
+        return False
 
 
 def thing_is_close(thing_one, thing_two):
@@ -317,6 +514,24 @@ def tstamp_to_string(tstamp: float, string_format: Optional[str] = None) -> str:
             string_format = f"%y{month_letter}%d"
 
     return dt.strftime(string_format)
+
+
+def to_jsonable(obj):
+    """Recursively convert numpy / bytes values into JSON-safe primitives."""
+    if isinstance(obj, dict):
+        return {str(k): to_jsonable(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [to_jsonable(v) for v in obj]
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    if isinstance(obj, np.generic):
+        return obj.item()
+    if isinstance(obj, (bytes, bytearray)):
+        try:
+            return obj.decode("utf-8")
+        except UnicodeDecodeError:
+            return obj.decode("latin-1", errors="replace")
+    return obj
 
 
 if __name__ == "__main__":

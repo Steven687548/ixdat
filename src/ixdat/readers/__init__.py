@@ -13,11 +13,15 @@ from .biologic import BiologicReader
 from .autolab import NovaASCIIReader
 from .ivium import IviumDatasetReader
 from .chi import CHInstrumentsTXTReader
+from .nordic import NordicTDMSReader
 
 # mass spectrometers
 from .pfeiffer import PVMassSpecReader
 from .rgasoft import StanfordRGASoftReader
 from .cinfdata import CinfdataTXTReader
+
+# online databases
+from .echemdb import EChemDBReader
 from .cinfdata_db import CinfdataDBReader
 
 # ec-ms
@@ -29,6 +33,7 @@ from .msrh_sec import MsrhSECReader, MsrhSECDecayReader
 
 # xrd
 from .xrdml import XRDMLReader
+from .xrd_xy import XRDXYReader
 
 # xps
 from .avantage import AvantageAVGReader
@@ -42,6 +47,12 @@ from .opus_ftir import OpusFTIRReader
 # optical
 from .oceanview import OceanViewTimeSeriesReader
 from .andor import AndorKineticsCSVReader
+
+# asimov
+from .asimov import AsimovReader
+
+# nmr
+from .bruker import BrukerNMRReader
 
 # Measurement.read() looks for readers here:
 
@@ -60,7 +71,11 @@ READER_CLASSES = {
     "EC_MS": EC_MS_CONVERTER,
     "msrh_sec": MsrhSECReader,
     "msrh_sec_decay": MsrhSECDecayReader,
+    "qexafs": QexafsDATReader,
+    "nordic": NordicTDMSReader,
     "b18_trxrf": B18TRXRFReader,
+    "echemdb": EChemDBReader,
+    "asimov": AsimovReader,
 }
 
 
@@ -70,8 +85,10 @@ SPECTRUM_READER_CLASSES = {
     "avantage": AvantageAVGReader,
     "zilien": ZilienSpectrumReader,
     "xrdml": XRDMLReader,
+    "xrdxy": XRDXYReader,
     "qexafs": QexafsDATReader,
     "opus_ftir": OpusFTIRReader,
     "oceanview": OceanViewTimeSeriesReader,
     "andor": AndorKineticsCSVReader,
+    "bruker": BrukerNMRReader,
 }
