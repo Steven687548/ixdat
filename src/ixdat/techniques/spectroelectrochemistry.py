@@ -599,7 +599,7 @@ class ECOpticalMeasurement(SpectroECMeasurement):
         if wlmax == None:
             wlmax = np.max(wl)
 
-        dOD_diff = dOD_cycle.data[step:] - dOD_cycle.data[:-step]
+        dOD_diff = dOD_cycle.data[step::step] - dOD_cycle.data[0:-step:step]
 
         dOD_diff = np.array(dOD_diff)
 
@@ -610,12 +610,15 @@ class ECOpticalMeasurement(SpectroECMeasurement):
             max_vals[max_vals == 0] = np.nan
             dOD_diff = dOD_diff / max_vals[:, np.newaxis]
             dOD_diff = np.ma.masked_invalid(dOD_diff)
+            
             # dOD_diff=dOD_diff[:,wl_range] values outside of wavelength range are non-physical
 
-        tseries = TimeSeries(
+            indices = np.arange(step, len(dOD_cycle.data), step)
+        
+            tseries = TimeSeries(
             name=dOD_cycle.axes_series[0].name,
             unit_name=dOD_cycle.axes_series[0].unit_name,
-            data=dOD_cycle.axes_series[0].data[:-step],
+            data=dOD_cycle.axes_series[0].data[indices],
             tstamp=dOD_cycle.axes_series[0].tstamp,
         )
 
