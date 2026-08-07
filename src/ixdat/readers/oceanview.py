@@ -2,6 +2,7 @@ from pathlib import Path
 import numpy as np
 import re
 from datetime import datetime, timedelta, timezone
+from scipy.ndimage import uniform_filter1d
 
 from ..data_series import DataSeries, TimeSeries, Field
 from ..spectra import SpectrumSeries
@@ -24,6 +25,8 @@ class OceanViewTimeSeriesReader:
         self,
         path_to_file,
         name=None,
+        spectra_type=None,  # spectra type is Intensity by default
+        boxcar_width=None,  # boxcar width for data smoothing. Width is 1 by default.
         cls=OpticalSpectrumSeries,
     ):
         path_to_file = Path(path_to_file)
@@ -88,6 +91,17 @@ class OceanViewTimeSeriesReader:
                 spectra.append(vals)
 
         y_matrix = np.stack(spectra)
+
+        # ---- Apply smoothing ----
+        if boxcar_width is None:
+            boxcar_width = 1
+
+        y_matrix_smoothed = uniform_filter1d(
+            y_matrix,
+            size=boxcar_width,
+            axis=1,
+        )
+
         rel_times = np.array(rel_times) - rel_times[0]  # start at 0 s
 
         # ---- Wrap into ixdat objects ----
@@ -96,12 +110,27 @@ class OceanViewTimeSeriesReader:
             name="time", unit_name="s", data=rel_times, tstamp=tstamp_first
         )
 
-        field = Field(
-            name="intensity",
-            unit_name="a.u.",
-            data=y_matrix,
-            axes_series=[tseries, xseries],
-        )
+        if spectra_type == "Transmission":
+            field = Field(
+                name="transmission",
+                unit_name="a.u",
+                data=y_matrix_smoothed,
+                axes_series=[tseries, xseries],
+            )
+        elif spectra_type == "Absorption":
+            field = Field(
+                name="absorption",
+                unit_name="a.u.",
+                data=y_matrix_smoothed,
+                axes_series=[tseries, xseries],
+            )
+        else:
+            field = Field(
+                name="intensity",
+                unit_name="a.u.",
+                data=y_matrix_smoothed,
+                axes_series=[tseries, xseries],
+            )
 
         uvvis_series = cls(
             name=name,
@@ -110,6 +139,7 @@ class OceanViewTimeSeriesReader:
             tstamp=tstamp_first,
             field=field,
             continuous=True,
+            spectra_type=spectra_type,
         )
         return uvvis_series
 

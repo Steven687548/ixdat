@@ -343,6 +343,15 @@ class CyclicVoltammogram(ECMeasurement):
         )
         return ax
 
+    def as_ec(self):
+        """Convert self to an EC measurement"""
+        from .ec import ECMeasurement
+
+        ec_as_dict = self.as_dict()
+        ec_as_dict["technique"] = "EC"
+        # Note, this works perfectly! All needed information is in self_as_dict :)
+        return ECMeasurement.from_dict(ec_as_dict)
+
 
 class CyclicVoltammagram(CyclicVoltammogram):
     # FIXME: decorating the class itself doesn't work because the callable returned
