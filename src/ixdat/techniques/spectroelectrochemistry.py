@@ -163,8 +163,6 @@ class ECOpticalMeasurement(SpectroECMeasurement):
         self.tracked_wavelengths = []
         self.plot_waterfall = self.plotter.plot_waterfall
         self.plot_wavelengths = self.plotter.plot_wavelengths
-        self.plot_waterfall_cycle = self.plotter.plot_waterfall_cycle
-        self.plot_dOD_cycle_diff = self.plotter.plot_dOD_cycle_diff
         self.plot_dOD_difference_spectra = self.plotter.plot_dOD_difference_spectra
         self.plot_convergent_spectra = self.plotter.plot_convergent_spectra
         self.plot_fit_and_residuals = self.plotter.plot_fit_and_residuals
@@ -267,7 +265,7 @@ class ECOpticalMeasurement(SpectroECMeasurement):
             #    wants to maintain this unknown reference point.
             #(3) If a reference  is given, the dOD is given relative to 
             #    this reference point.
-        if V_ref or t_ref or index_ref:
+        if V_ref is not None or t_ref is not None or index_ref is not None:
             ref = self.get_spectrum(V=V_ref, t=t_ref, index=index_ref)
         elif self.reference_spectrum:
             ref = self.reference_spectrum
@@ -336,10 +334,13 @@ class ECOpticalMeasurement(SpectroECMeasurement):
         end_spectra = (self.spectrum_series[0].y, self.spectrum_series[-1].y)
         if V is not None:
             if interpolate:
+                V_spec = self.grab_for_t(
+                        self.U_name,
+                        t=self.spectra.axes_series[0].t,
+                    )
                 counts_interpolater = interp1d(
-                    self.U, counts, axis=0, fill_value=end_spectra, bounds_error=False
+                    V_spec, counts, axis=0, fill_value=end_spectra, bounds_error=False
                 )
-                # FIXME: This requires that potential and spectra have same tseries!
                 y = counts_interpolater(V)
             else:
                 U_diff = np.abs(self.U - V)
@@ -353,10 +354,12 @@ class ECOpticalMeasurement(SpectroECMeasurement):
                     t_spec, counts, axis=0, fill_value=end_spectra, bounds_error=False
                 )
                 y = counts_interpolater(t)
+                
             else:
                 t_diff = np.abs(t_spec - t)
                 index = np.argmin(t_diff)
                 y = counts[index]
+                
             name = name or f"{self.spectra.name}_{t}s"
         else:
             raise ValueError("Need t or V or index to select a spectrum!")
@@ -377,6 +380,7 @@ class ECOpticalMeasurement(SpectroECMeasurement):
         V_ref=None,
         t_ref=None,
         index_ref=None,
+        interpolate=True
     ):
         """Return the delta optical density Spectrum given a point and reference point.
 
@@ -394,11 +398,13 @@ class ECOpticalMeasurement(SpectroECMeasurement):
             V_ref (float): The potential at which to get the reference spectrum
             t_ref (float): The time at which to get the reference spectrum
             index_ref (int): The index of the reference spectrum
+            interpolate (bool): Optional. Set to false to grab closest spectrum rather
+                than interpolating.
         Return:
              Spectrum: The dOD spectrum. The data is (spectrum.x, spectrum.y)
         """
 
-        spectrum = self.get_spectrum(V=V, t=t, index=index)
+        spectrum = self.get_spectrum(V=V, t=t, index=index, interpolate=interpolate)
         spectrum_ref=None
         #---- Check form of data and reference spectrum. Note that:
             #(1) If no reference spectrum is given and data is in intensity 
@@ -410,7 +416,7 @@ class ECOpticalMeasurement(SpectroECMeasurement):
             #(3) If a reference spectrum is given, the dOD is given relative to 
             #    this reference point.
         if V_ref or t_ref or index_ref:
-            spectrum_ref = self.get_spectrum(V=V_ref, t=t_ref, index=index_ref)
+            spectrum_ref = self.get_spectrum(V=V_ref, t=t_ref, index=index_ref, interpolate=interpolate)
         elif self.reference_spectrum:
             spectrum_ref = self.reference_spectrum
         if not spectrum_ref:
@@ -449,288 +455,219 @@ class ECOpticalMeasurement(SpectroECMeasurement):
             unit_name="",
             axes_series=[self.wavelength],
         )
-        return Spectrum.from_field(field)
-
-    def get_dOD_spectrum_diff(
+        return Spectrum.from_field(field, tstamp=self.tstamp)
+    
+    def get_diff_dOD_spectrum(
         self,
         V=None,
         t=None,
         index=None,
-        V_ref=None,
-        t_ref=None,
-        index_ref=None,
         normalise=True,
-        step=1,
+        dt=None,
+        dV=None,
+        dIndex=None,
         wlrange=None,
+        interpolate=True,
     ):
         """Returns the difference of two delta optical density Spectra (the inital one at the
-        given point defined by V, t, or index, and the second one which is "step" indices 
-        further on in time). Both spectra are referenced to the same reference point, although 
-        this naturally cancels out.
-
+        given point defined by V, t, or index, and the second one either dV, dt, or dIndex away.
         Provide exactly one of V, t, and index, and at most one of V_ref, t_ref, and
         index_ref. For V and V_ref to work, the potential in the measurement must be
+        monotonically increasing. If none of V_ref, t_ref, or index_ref are provided the default
+        reference spectrum (self.reference_spectrum) will be used.
+
+        Provide exactly one of V, t, and index, and at exactly one of dV, dt, or dIndex.
+        For V and dV to work, the potential in the measurement must be
         monotonically increasing.
 
         Args:
             V (float): The potential at which to get the initial spectrum.
             t (float): The time at which to get the inital spectrum
             index (int): The index of the inital spectrum
-            V_ref (float): The potential at which to get the reference spectrum
-            t_ref (float): The time at which to get the reference spectrum
-            index_ref (int): The index of the reference spectrum
             normalise (bool): Whether or not to normalise spectra. Defaults to true
-            step (int): the step size (in indices) that the second spectrum is 
-                        further on in time from the inital spectrum
+            dt (float): The difference in time between successive spectra to use
+            dV (float): The difference in potential between successive spectra to use
+            dIndex (int): The difference in index between successive spectra to use
             wlrange (tuple): The range of wavelengths to consider for normalisation
+            interpolate (bool): Optional. Set to false to grab closest spectrum rather
+                than interpolating.
         Return:
              Spectrum: The difference dOD spectrum as a field.
         """
         measurement = self
-        t_spec = measurement.spectra.axes_series[0].t
-        if not index:
-            if t:
-                index = int(np.argmin(np.abs(t_spec - t)))
-            elif V:
-                index = int(np.argmin(np.abs(self.U - V)))
-            else:
-                raise ValueError("Need one of t, V, or index.")
         
-        if index + step <0 or index + step > len(measurement.data):
+        if index is None and V is None and t is None:
+            raise ValueError ("Need exacly one of index, V, or t")
+        elif not dt and not dV and not dIndex:
+            raise ValueError ("Need exactly one of dt, dV, or dIndex")
+        elif index is not None and dIndex is not None and (index + dIndex <0 or index + dIndex > len(measurement.spectra.data)):
             raise ValueError("The chosen step size results in an index which is beyond the extent of the data")
-
-        dOD1 = measurement.get_dOD_spectrum(
-            index=index, V_ref=V_ref, t_ref=t_ref, index_ref=index_ref
-        )
-        dOD2 = measurement.get_dOD_spectrum(
-            index=index + step, V_ref=V_ref, t_ref=t_ref, index_ref=index_ref
-        )
-
-        dOD_diff = dOD2.y - dOD1.y
-
-        if normalise:
-            # trim data to ignore regions outside of range of interest before normalising
-            wl = measurement.wavelength.data
-            if wlrange is None:
-                wlrange=(np.min(wl), np.max(wl))
-            mask = (wl >= wlrange[0]) & (wl <=  wlrange[1])
-            dOD_diff_max = np.max((np.abs(dOD_diff[mask])))
-            dOD_diff = dOD_diff / dOD_diff_max
-
-        dOD_diff_field = Field(
-            data=dOD_diff,
-            name="dOD difference spectrum",
-            unit_name="",
-            axes_series=[measurement.wavelength],
-        )
-
-        return Spectrum.from_field(dOD_diff_field)
-
-    @staticmethod
-    def _check_direction(direction):
-        """Raise ValueError unless direction is 0 (anodic), 1 (cathodic), or None."""
-        if direction is not None and direction not in (0, 1):
-            raise ValueError(
-                "direction must be 0 (anodic), 1 (cathodic), or None (full cycle)"
+        elif t is not None and dt is not None and (t + dt < measurement.t.min() or t + dt > measurement.t.max()):
+            raise ValueError("The chosen step size results in an index which is beyond the extent of the data")
+        elif V is not None and dV is not None and (V + dV < measurement.U.min() or V + dV > measurement.U.max()):
+            raise ValueError("The chosen step size results in an index which is beyond the extent of the data")
+        else:
+            new_index=None
+            new_t=None
+            new_V=None
+            if V is not None and dV is not None:
+                new_V=V+dV
+            elif t is not None and dt is not None:
+                new_t=t+dt
+            elif index is not None and dIndex is not None:
+                new_index=index+dIndex
+            
+            dOD_diff = measurement.get_dOD_spectrum(
+                index=new_index, t=new_t, V=new_V, V_ref=V, t_ref=t, index_ref=index, interpolate=interpolate
+            )
+            dOD_diff_data=dOD_diff.y
+            
+            #the time of this spectrum is the time of the spectrum at new_index/new_t/new_V
+            
+            if normalise:
+                # trim data to ignore regions outside of range of interest before normalising
+                wl = measurement.wavelength.data
+                if wlrange is None:
+                    wlrange=(np.min(wl), np.max(wl))
+                mask = (wl >= wlrange[0]) & (wl <=  wlrange[1])
+                dOD_diff_max = np.max((np.abs(dOD_diff_data[mask])))
+                dOD_diff_data = dOD_diff_data / dOD_diff_max
+    
+            dOD_diff_field = Field(
+                data=dOD_diff_data,
+                name="dOD difference spectrum",
+                unit_name="",
+                axes_series=[measurement.wavelength],
             )
 
-    def get_dOD_cycle(
-        self,
-        J_name="cycle",
-        cycle_number=None,
-        V_ref=None,
-        t_ref=None,
-        index_ref=None,
-        direction=None,
-        N_points=10,
-    ):
-        """Return a ValueSeries for the dOD for a specific cycle.
-        If V_ref, t_ref, or index_ref are provided, they specify what to reference dOD
-            to. Otherwise, dOD is referenced to the SECMeasurement's reference_spectrum.
+        return Spectrum.from_field(dOD_diff_field, tstamp=dOD_diff.tstamp)    
 
-        Args:
-            J_name (str): Name of the cycle series
-            cycle_number (int) : the cycle of interest
-            V_ref (float): The potential at which to get the reference spectrum
-            t_ref (float): The time at which to get the reference spectrum
-            index_ref (int): The index of the reference spectrum
-            direction (0, 1): the scan direction. 0 = anodic, 1 = cathodic, nothing is
-                full cycle. Full cycle by default.
-        Returns ValueSeries: The dOD value of the spectrum at wl.
-        """
-        self._check_direction(direction)
-        measurement = self
-        # get cycle values
-        cycle_series = measurement[J_name]
-
-        cycle = np.interp(
-            measurement.spectra.axes_series[0].t,
-            cycle_series.tseries.t,
-            cycle_series.data,
-        )
-        # if in-between cycles, round up
-        cycle = np.ceil(cycle)
-
-        # Mask spectra belonging to this cycle. Get cycle 1 by default.
-        if cycle_number is not None:
-            mask = cycle == cycle_number
-        else:
-            mask = cycle == 1
-        dOD = measurement.calc_dOD(V_ref=V_ref, t_ref=t_ref, index_ref=index_ref)
-        dOD_data = dOD.data[mask]
-        t_spec = measurement.spectra.axes_series[0].data[mask]
-
-        if direction == 0 or direction == 1:
-            U_interp = np.interp(t_spec, measurement.t, measurement.U)
-            dUdt = np.gradient(U_interp)
-            sign = np.sign(dUdt)
-
-            turning_indices = np.where(sign[:-1] != sign[1:])[0] + 1
-
-            valid_indices = []
-            if len(turning_indices) >= 1:
-                for idx in turning_indices:
-                    if idx < N_points or len(t_spec) - idx < N_points:
-                        continue
-                    window_end = idx + N_points
-                    next_points = sign[idx:window_end]
-
-                    if len(next_points) > 0:
-                        if len(next_points) > 0:
-                            same_sign = np.all(next_points == sign[idx])
-                            if same_sign and sign[idx] != 0:
-                                valid_indices.append(idx)
-
-            # For SEC, you should only have 1 turning point per cycle
-            if len(valid_indices) > 1:
-                raise ValueError(
-                    "Multiple turning points detected. Set cycle limits so that "
-                    "there is only one turning point per cycle"
-                )
-            if len(valid_indices) == 0:
-                raise ValueError("No valid turning point detected in this cycle.")
-
-            valid_index = valid_indices[0]
-
-            if sign[valid_index] > 0:
-                anodic_mask = np.arange(len(t_spec)) > valid_index
-                cathodic_mask = np.arange(len(t_spec)) < valid_index
-            else:
-                # sign[valid_index] < 0, guaranteed nonzero by the same-sign filter above
-                anodic_mask = np.arange(len(t_spec)) < valid_index
-                cathodic_mask = np.arange(len(t_spec)) > valid_index
-
-            if direction == 0:
-                t_spec = t_spec[anodic_mask]
-                dOD_data = dOD_data[anodic_mask]
-            elif direction == 1:
-                t_spec = t_spec[cathodic_mask]
-                dOD_data = dOD_data[cathodic_mask]
-
-        tseries = TimeSeries(
-            name=measurement.spectra.axes_series[0].name,
-            unit_name=measurement.spectra.axes_series[0].unit_name,
-            data=t_spec,
-            tstamp=measurement.tstamp,
-        )
-
-        dOD_cycle = Field(
-            name=dOD.name,
-            unit_name=dOD.unit_name,
-            data=dOD_data,
-            axes_series=[
-                tseries,
-                measurement.spectra.axes_series[1],
-            ],
-        )
-        return dOD_cycle
 
     def get_dOD_difference_spectra(
         self,
-        J_name="cycle",
-        cycle_number=None,
         V_ref=None,
         t_ref=None,
         index_ref=None,
-        direction=None,
         normalise=True,
+        t=None,
+        V=None,
+        index=None,
+        dt=None,
+        dV=None,
+        dIndex=None,
         wlrange=None,
-        step=1,
-        cycle_field=None,
-        N_points=10,
+        interpolate=True,
     ):
-        """Return a ValueSeries of dOD difference spectra for a specific cycle.
-        If V_ref, t_ref, or index_ref are provided, they specify what to reference dOD
-            to. Otherwise, dOD is referenced to the SECMeasurement's reference_spectrum.
+        """Return a ValueSeries of dOD difference spectra over the whole range of self. 
+        Provide exactly one of V, t, and index, and at most one of V_ref, t_ref, and
+        index_ref. For V and V_ref to work, the potential in the measurement must be
+        monotonically increasing. If none of V_ref, t_ref, or index_ref are provided the default
+        reference spectrum (self.reference_spectrum) will be used.
 
         Args:
-            J_name (str): Name of the cycle series. Defaults to "cycle"
-            cycle_number (int) : the cycle of interest. Defaults to 1.
-            V_ref (float): The potential at which to get the reference spectrum
-            t_ref (float): The time at which to get the reference spectrum
-            index_ref (int): The index of the reference spectrum
-            direction (0, 1): the scan direction. 0 = anodic, 1 = cathodic, nothing is
-                full cycle. Full cycle by default.
             normalise (bool): Whether or not to normalise spectra. Defaults to true
-            step (int): the step size (in indices) between successive spectra
+            V (float): The potential at which to get the initial spectrum. Defaults to the 
+                first potential in the measurement.
+            t (float): The time at which to get the inital spectrum. Defaults to the first 
+                time in the measurement.
+            index (int): The index of the inital spectrum. Defaults to the first index in
+                the measurement.
+            dt (float): The difference in time between successive spectra to use
+            dV (float): The difference in potential between successive spectra to use
+            dIndex (int): The difference in index between successive spectra to use
             wlrange (tuple): The range of wavelengths to consider for normalisation
+            interpolate (bool): Optional. Set to false to grab closest spectrum rather
+                than interpolating.
         Returns ValueSeries: The difference dOD value of the spectra in the cycle.
         """
-        self._check_direction(direction)
         measurement=self
 
-        if step < 1 or step>len(measurement.data) and step is not None:
-            raise ValueError("Step must be a positive integer")
+        if not dt and not dV and not dIndex:
+            raise ValueError ("Need exactly one of dt, dV, or dIndex") 
+            
+        elif dIndex is not None and (dIndex  <0 or dIndex > len(measurement.spectra.data)):
+            raise ValueError("The chosen step size results in an index which is beyond the extent of the data")
         
-
-        measurement = self
-        if cycle_field is not None:
-            dOD_cycle = cycle_field
-        else:
-            dOD_cycle = measurement.get_dOD_cycle(
-                J_name=J_name,
-                cycle_number=cycle_number,
-                V_ref=V_ref,
-                t_ref=t_ref,
-                index_ref=index_ref,
-                direction=direction,
-                N_points=N_points,
-            )
-
+        elif dt is not None and (dt < 0 or measurement.t.min()+ dt > measurement.t.max()):
+            raise ValueError("The chosen step size results in an index which is beyond the extent of the data")
         
-        dOD_diff = dOD_cycle.data[step::step] - dOD_cycle.data[0:-step:step]
-
+        elif dV is not None and (measurement.U.min()+dV < measurement.U.min() or measurement.U.min()+dV > measurement.U.max()):
+            raise ValueError("The chosen step size results in an index which is beyond the extent of the data")
+                
+        time=measurement.t
+        potential=measurement.U
+        if V is None and dV is not None:
+            V=potential[0]
+        elif index is None and dIndex is not None:
+            index=0
+        elif t is None and dt is not None:
+            t=time[0]
+        dOD_diff=[]
+        diff_times=[]
+        
+        if dIndex is not None:
+            for index in range(len(measurement.spectra.data), dIndex):
+                   dOD_diff.append(measurement.get_diff_dOD_spectrum(index=index, dIndex=dIndex, interpolate=interpolate).y)
+                   diff_times.append(time[index+dIndex])
+              
+        elif dV is not None:
+            for i in range(len(potential)):
+                if V+dV > measurement.U.max():
+                    break
+                dOD_diff.append(measurement.get_diff_dOD_spectrum(V=V, dV=dV, interpolate=interpolate).y)
+                if V+dV in potential:  # woohoo, can skip interpolation!
+                    index = int(np.argmax(potential == V+dV))
+                    diff_times.append(time[index])
+                else:
+                    end_potentials = (potential[0], potential[-1])
+                    if interpolate:
+                        potential_interpolater = interp1d(
+                            potential, time, axis=0, fill_value=end_potentials, bounds_error=False
+                        )
+                        diff_times.append(potential_interpolater(V+dV))
+                    else:
+                        U_diff = np.abs(potential - (V+dV))
+                        index = np.argmin(U_diff)
+                        diff_times.append(time[index])
+                V+= dV
+            
+        elif dt is not None:
+            for i in range(len(time)):
+                dOD_diff.append(measurement.get_diff_dOD_spectrum(t=t, dt=dt, interpolate=interpolate).y)
+                if interpolate or t+dt in time:
+                    diff_times.append(t+dt)
+                else:
+                    time_diff=np.aps(time-(t+dt))
+                    index=np.argmin(time_diff)
+                    diff_times.append(time[index])
+                t+=dt
+        
         dOD_diff = np.array(dOD_diff)
 
         if normalise:
             # trim data to ignore regions outside of detection range before normalising
-            wl = dOD_cycle.axes_series[1].data
+            wl = measurement.wl
             if wlrange is None:
                 wlrange=(np.min(wl), np.max(wl))
             mask = (wl >= wlrange[0]) & (wl <=  wlrange[1])
-            max_vals = np.max(dOD_diff[mask], axis=1)
+            max_vals = np.max(dOD_diff[:,mask], axis=1)
             dOD_diff = dOD_diff / max_vals[:, np.newaxis]
             dOD_diff = np.ma.masked_invalid(dOD_diff)
-
-            # dOD_diff=dOD_diff[:,wl_range] values outside of wavelength range are non-
-            # physical
-
-        indices = np.arange(step, len(dOD_cycle.data), step)
-
+         
+        #Times used are the ones at index+dIndex/V+dV/t+dt
         tseries = TimeSeries(
-            name=dOD_cycle.axes_series[0].name,
-            unit_name=dOD_cycle.axes_series[0].unit_name,
-            data=dOD_cycle.axes_series[0].data[indices],
-            tstamp=dOD_cycle.axes_series[0].tstamp,
+            name=measurement.name,
+            unit_name=measurement.spectra.axes_series[0].unit_name,
+            data=diff_times,
+            tstamp=measurement.spectra.axes_series[0].tstamp,
         )
-
+            
         field = Field(
             data=dOD_diff,
             name=r"$\Delta$ A (U-$\delta$U)(normalised)",
             unit_name="",
-            axes_series=[
-                tseries,
-                dOD_cycle.axes_series[1],
+            axes_series=[tseries,
+                measurement.wavelength,
             ],
         )
 
