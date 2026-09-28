@@ -4,7 +4,7 @@ from scipy.interpolate import interp1d
 from .ec import ECMeasurement
 from ..db import PlaceHolderObject
 from ..spectra import Spectrum, SpectroMeasurement, SpectrumSeries
-from ..data_series import Field, ValueSeries, TimeSeries
+from ..data_series import Field, ValueSeries, TimeSeries, DataSeries
 from ..exporters import SECExporter
 from ..plotters import SECPlotter, ECOpticalPlotter
 from scipy.spatial.distance import pdist, squareform
@@ -545,9 +545,6 @@ class ECOpticalMeasurement(SpectroECMeasurement):
 
     def get_dOD_difference_spectra(
         self,
-        V_ref=None,
-        t_ref=None,
-        index_ref=None,
         normalise=True,
         t=None,
         V=None,
@@ -675,17 +672,16 @@ class ECOpticalMeasurement(SpectroECMeasurement):
 
     def get_convergent_spectra(
         self,
-        J_name="cycle",
-        cycle_number=None,
         diff_spectra_field=None,
-        V_ref=None,
-        t_ref=None,
-        index_ref=None,
-        direction=None,
         normalise=True,
-        wlmin=400,
-        wlmax=900,
-        step=1,
+        t=None,
+        V=None,
+        index=None,
+        dt=None,
+        dV=None,
+        dIndex=None,
+        wlrange=None,
+        interpolate=True,
         conv_limit=0.01,
         convergence_metric="correlation",
         smooth_distances=False,
@@ -701,26 +697,41 @@ class ECOpticalMeasurement(SpectroECMeasurement):
         n_start=3,
     ):
         """Return a ValueSeries of convergent dOD spectra.
-        If V_ref, t_ref, or index_ref are provided, they specify what to reference dOD
-            to. Otherwise, dOD is referenced to the SECMeasurement's reference_spectrum.
+            This function takes a set of difference spectra and finds the points at which
+            the sepctra converge. It uses pdist from scipy 
+            (https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.distance.pdist.html)
+            to work out the spatial distance between each successive set of two spectra.
+            Convergence is defined as the points where this spatial distance is minimised and below
+            conv_limit. Correlation is used as the default distance metric. The output is distances
+            between 0 and 1. A correlation distance of 0 implies that spectrum A and spectrum B
+            are completely dependent. A correlation distance of 1 suggests that spectrum A and 
+            spectrum B are completely independent.
             Note: If data is too noisy, it may not meet convergence criterion.
 
         Args:
-            J_name (str): Name of the cycle series. Defaults to "cycle"
-            cycle_number (int) : the cycle of interest. Defaults to 1.
-            V_ref (float): The potential at which to get the reference spectrum
-            t_ref (float): The time at which to get the reference spectrum
-            index_ref (int): The index of the reference spectrum
-            direction (0, 1): the scan direction. 0 = anodic, 1 = cathodic, nothing is
-                full cycle. Full cycle by default.
+            diff_spectra_field (Field): the field containing the difference spectra, if
+                different than that returned by self.get_dOD_difference_spectra
             normalise (bool): Whether or not to normalise spectra. Defaults to true
-            step (int): the step size for difference spectra. 1 by default
-            wlmin (float): minimum wavelength to consider. 400nm by default.
-            wlmax (float): maximum wavelength to consider. 900 nm by default
-            conv_limt (float): the limit for convergence of spectra. Set to 0.01 by
-                default.
+            V (float): The potential at which to get the initial spectrum. Defaults to the 
+                first potential in the measurement.
+            t (float): The time at which to get the inital spectrum. Defaults to the first 
+                time in the measurement.
+            index (int): The index of the inital spectrum. Defaults to the first index in
+                the measurement.
+            dt (float): The difference in time between successive spectra to use
+            dV (float): The difference in potential between successive spectra to use
+            dIndex (int): The difference in index between successive spectra to use
+            wlrange (tuple): The range of wavelengths to consider for normalisation
+            interpolate (bool): Optional. Set to false to grab closest spectrum rather
+                than interpolating.
+            conv_limt (float): the limiting value of the correlation distance for convergence 
+            of spectra. Set to 0.01 by default. Dimensionless.
             convergence_metric (str) : the choice of distance algorithm to pass to pdist.
-                Correlation by default.
+                Correlation by default. The distance function can be ‘braycurtis’, ‘canberra’,
+                ‘chebyshev’, ‘cityblock’, ‘correlation’, ‘cosine’, ‘dice’, ‘euclidean’, 
+                ‘hamming’, ‘jaccard’, ‘jensenshannon’, ‘mahalanobis’, ‘matching’, 
+                ‘minkowski’, ‘rogerstanimoto’, ‘russellrao’, ‘seuclidean’, 
+                ‘sokalsneath’, ‘sqeuclidean’, ‘yule’. See https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.distance.pdist.html
             smooth_distances (bool) : whether to smooth the distance array (used to find
                 similar spectra) with a Savitzky-Golay filter before peak-finding.
             window_length (int) : the window length to pass to the Savitzky-Golay
@@ -733,8 +744,7 @@ class ECOpticalMeasurement(SpectroECMeasurement):
                 peaks, the vertical distance to its neighboring samples
             distance (float) : To be passed to find_peaks. The required minimum
                 horizontal distance in samples between neighbouring peaks. Smaller peaks
-                    are
-                removed first until the condition is met.
+                    are removed first until the condition is met.
             height (float) : To be passed to find_peaks. The required height of peaks.
             min_region_width (int) : Minimum number of points in a convergent region. 2
                 by default.
@@ -742,8 +752,9 @@ class ECOpticalMeasurement(SpectroECMeasurement):
                 between two convergent regions.
             converged_spectrum_form (str) : The way the converged spectra are handled.
                 "average" returns an average spectrum over the convergent region.
+                
         Returns: The set of convergent spectra for the specific cycle, the potentials at
-            which they occur, and the plot of the distances used for the convergence
+            which they occur, and the distances used for the convergence
             criterion
         """
         # FIX: if data is noisy, does not meet convergence criterion. Smoothing doesn't
@@ -752,16 +763,15 @@ class ECOpticalMeasurement(SpectroECMeasurement):
         measurement = self
         if diff_spectra_field is None:
             spectra_field = measurement.get_dOD_difference_spectra(
-                J_name=J_name,
-                cycle_number=cycle_number,
-                V_ref=V_ref,
-                t_ref=t_ref,
-                index_ref=index_ref,
-                direction=direction,
                 normalise=normalise,
-                wlmin=wlmin,
-                wlmax=wlmax,
-                step=step,
+                t=t,
+                V=V,
+                index=index,
+                dt=dt,
+                dV=dV,
+                dIndex=dIndex,
+                wlrange=wlrange,
+                interpolate=interpolate,
             )
         else:
             spectra_field = diff_spectra_field
@@ -770,21 +780,25 @@ class ECOpticalMeasurement(SpectroECMeasurement):
         spectra = spectra_field.data
 
         # The spectra will be nonsense outside of the region in which we can actually
-        # detect signals. For the CHEAC spectrometer, this is between 400 and 900 nm.
-        # To make the convergence maths work, we must neglect spectra outside of this
-        # region
-        wl_range = (wl >= wlmin) & (wl <= wlmax)
-        spectra = spectra[:, wl_range]
+        # detect signals. For the CHEAC spectrometer using a glass slide for a window,
+        # this is between 400 and 900 nm. To make the convergence maths work, we must 
+        # neglect spectra outside of this region
+        if wlrange is None:
+            wlrange=(np.min(wl), np.max(wl))
+        mask = (wl >= wlrange[0]) & (wl <=  wlrange[1])
+        spectra = spectra[:, mask]
 
-        # find the stastistical difference between each spectrum
+        # find the stastistical distance between each spectrum. For correlation as a 
+        # convergence_metric, the value returned is: 
+        # 1 - \\frac{(u - \\bar{u}) \\cdot (v - \\bar{v})}
+        #          {{\\|(u - \\bar{u})\\|}_2 {\\|(v - \\bar{v})\\|}_2}
+        #     where :math:`\\bar{v}` is the mean of the elements of vector v,
+        #and :math:`x \\cdot y` is the dot product of :math:`x` and :math:`y`.
+        
         distance_matrix = squareform(pdist(spectra, convergence_metric))
         # Adjacent distances - the distance between each successive spectrum is on the
         # offset diagonal of the above matrix
         adjacent_distances = np.diag(distance_matrix, k=1)
-
-        # spectra=np.array(spectra)
-        # diff_of_spectra=np.diff(spectra, axis=0)
-        # adjacent_distances=np.sqrt(np.mean(diff_of_spectra**2, axis=1))
 
         # Apply smoothing if necessary. Aids peak detection.
         if smooth_distances:
@@ -854,18 +868,15 @@ class ECOpticalMeasurement(SpectroECMeasurement):
 
         if normalise and len(convergent_spectra) > 0:
             convergent_spectra = np.asarray(convergent_spectra)
-            # Select wavelength range
-            min_vals = np.min(convergent_spectra, axis=1)
             max_vals = np.max(convergent_spectra, axis=1)
-            ranges = max_vals - min_vals
-            ranges[ranges == 0] = np.nan
-            dOD_diff = (convergent_spectra - min_vals[:, np.newaxis]) / ranges[
-                :, np.newaxis
-            ]
-            dOD_diff = np.ma.masked_invalid(dOD_diff)
-
-        wl_series = copy.copy(spectra_field.axes_series[1])
-        wl_series._data = wl_series.data[wl_range]
+            convergent_spectra = convergent_spectra / max_vals[:, None]
+            convergent_spectra = np.ma.masked_invalid(convergent_spectra)
+            
+        new_wl_series = DataSeries(
+        name=spectra_field.axes_series[1].name + "with reduced wavelength mask applied",
+        unit_name=spectra_field.axes_series[1].unit,
+        data=spectra_field.axes_series[1].data[mask],
+    )
 
         tseries = TimeSeries(
             name="time",
@@ -878,7 +889,7 @@ class ECOpticalMeasurement(SpectroECMeasurement):
             data=convergent_spectra,
             name=r"$\Delta$ A (U-$\delta$U)(normalised)",
             unit_name="",
-            axes_series=[tseries, wl_series],
+            axes_series=[tseries, new_wl_series],
         )
 
         return (
